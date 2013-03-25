@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <title>UbiquityStoreManager by lhunath</title>
+  </head>
+
+  <body>
+    <div id="container">
+      <div class="inner">
+
+        <header>
+          <h1>UbiquityStoreManager</h1>
+          <h2>Solving the iCloud for Core Data problem</h2>
+        </header>
+
+        <section id="downloads" class="clearfix">
+          <a href="https://github.com/lhunath/UbiquityStoreManager/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
+          <a href="https://github.com/lhunath/UbiquityStoreManager/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
+          <a href="https://github.com/lhunath/UbiquityStoreManager" id="view-on-github" class="button"><span>View on GitHub</span></a>
+        </section>
+
+        <hr>
+
+        <section id="main_content">
+          <h1>About</h1>
+
+<p><code>UbiquityStoreManager</code> is a controller that implements <strong>iCloud integration with Core Data</strong> for you.</p>
+
+<p>While Apple portrays iCloud integration as trivial, the contrary is certainly true.  Especially for Core Data, there are many caveats, side-effects and undocumented behaviors that need to be handled to get a reliable implementation.</p>
+
+<p>Unfortunately, Apple also has a bunch of serious bugs left to work out in this area, which can sometimes lead to cloud stores that become desynced or even irreparably broken.  <code>UbiquityStoreManager</code> handles these situations as best as possible.</p>
+
+<p>The API has been kept as simple as possible while giving you, the application developer, the hooks you need to get the behavior you want.  Wherever possible, <code>UbiquityStoreManager</code> implements safe and sane default behavior to handle exceptional situations.  These cases are well documented in the API documentation, as well as your ability to plug into the manager and implement your own custom behavior.</p>
+
+<h1>Disclaimer</h1>
+
+<p><a href="http://www.lhunath.com">I</a> provide <code>UbiquityStoreManager</code> and its example application to you for free and do not take any responsability for what it may do in your application.</p>
+
+<p>Creating <code>UbiquityStoreManager</code> has taken me a huge amount of work and few developers have so far been brave enough to try and solve the iCloud for Core Data problem that Apple left us with.  This code is provided to you free of cost, in the hopes that it will be useful to you in its current form or another.  If this solution is useful to you, please consider saying <em>thanks</em> or donating to the cause.</p>
+
+<p><a href="http://www.pledgie.com/campaigns/19629"><img alt="Click here to lend your support to: UbiquityStoreManager and make a donation at www.pledgie.com !" src="http://www.pledgie.com/campaigns/19629.png?skin_name=chrome" border="0"></a></p>
+
+<h1>Getting Started</h1>
+
+<p>To get started with <code>UbiquityStoreManager</code>, all you need to do is instantiate it:</p>
+
+<pre><code>[[UbiquityStoreManager alloc] initStoreNamed:nil
+                      withManagedObjectModel:nil
+                               localStoreURL:nil
+                         containerIdentifier:nil
+                      additionalStoreOptions:nil
+                                    delegate:self]
+</code></pre>
+
+<p>And then wait in your delegate for the manager to bring up your persistence layer:</p>
+
+<pre><code>- (void)ubiquityStoreManager:(UbiquityStoreManager *)manager willLoadStoreIsCloud:(BOOL)isCloudStore {
+
+    self.moc = nil;
+}
+
+- (void)ubiquityStoreManager:(UbiquityStoreManager *)manager didLoadStoreForCoordinator:(NSPersistentStoreCoordinator *)coordinator isCloud:(BOOL)isCloudStore {
+
+    self.moc = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
+    [moc setPersistentStoreCoordinator:coordinator];
+    [moc setMergePolicy:NSMergeByPropertyObjectTrumpMergePolicy];
+}
+</code></pre>
+
+<p>That’s it!  The manager set up your <code>NSPersistentStoreCoordinator</code>, you created an <code>NSManagedObjectContext</code>, you’re ready to go.</p>
+
+<p>Just keep in mind, as aparent from the code above, that your <code>moc</code> can be <code>nil</code>.  This happens when the manager is not (yet) ready with loading the store.  It can also occur after the store has been loaded (eg. cloud is turned on/off or the store needs to be re-loaded).  So just make sure that your application deals gracefully with your main <code>moc</code> being unavailable.  You can also observe the <code>UbiquityManagedStoreDidChangeNotification</code> which will be posted each time the availability of persistence stores changes (and always after your delegate is informed).</p>
+
+<p>Initially, the manager will be using a local store.  To enable iCloud (you may want to do this after the user toggles iCloud on), just flip the switch:</p>
+
+<pre><code>manager.cloudEnabled = YES;
+</code></pre>
+
+<h1>Surely I’m not done yet!</h1>
+
+<p>That depends on how much you want to get involved with what <code>UbiquityStoreManager</code> does internally to handle your store, and how much feedback you want to give your user with regards to what’s going on.</p>
+
+<p>For instance, you may want to implement visible feedback for while persistence is unavailable (eg. show an overlay with a loading spinner).  You’d bring this spinner up in <code>-ubiquityStoreManager:willLoadStoreIsCloud:</code> and dismiss it in <code>-ubiquityStoreManager:didLoadStoreForCoordinator:isCloud:</code>.</p>
+
+<p>It’s probably also a good idea to update your main <code>moc</code> whenever ubiquity changes are getting imported into your store from other devices.  To do this, simply provide the manager with your <code>moc</code> by returning it from <code>-managedObjectContextForUbiquityChangesInManager:</code> and optionally register an observer for <code>UbiquityManagedStoreDidImportChangesNotification</code>.</p>
+
+<h1>What if things go wrong?</h1>
+
+<p>And don’t be fooled: Things do go wrong.  Apple has a few kinks to work out, some of these can cause the cloud store to become irreparably desynced.</p>
+
+<p><code>UbiquityStoreManager</code> does its best to deal with these issues, mostly automatically.  Because the manager takes great care to ensure no data-loss occurs there are some rare cases where the store cannot be automatically salvaged.  It is therefore important that you implement some failure handling, at least in the way recommended by the manager.</p>
+
+<p>While it theoretically shouldn’t happen, sometimes ubiquity changes designed to sync your cloud store with the store on other devices can be incompatible with your cloud store.  Usually, this happens due to an Apple iCloud bug in dealing with relationships that are simultaneously edited from different devices, causing conflicts that can’t be handled.  Interestingly, the errors happen deep within Apple’s iCloud implementation and Apple doesn’t bother notifying you through any public API.  <code>UbiquityStoreManager</code> implements a way of detecting these issues when they occur and deals with them as best it can.  </p>
+
+<p>Whenever problems occur with importing transaction logs (ubiquity changes), your application can be notified and optionally intervene by implementing <code>-ubiquityStoreManager:handleCloudContentCorruptionWithHealthyStore:</code> in your delegate.  If you just want to be informed and let the manager handle the situation, return <code>NO</code>.  If you want to handle the situation in a different way than what the manager does by default, return <code>YES</code> after dealing with the problem yourself.</p>
+
+<p>Essentially, the manager deals with import exceptions by unloading the store on the device where ubiquity changes conflict with the store and notifying all other devices that the store has entered a <strong>”corrupted”</strong> state.  Other devices may not experience any errors (they may be the authors of the corrupting logs, or they may not experience conflicts between their store and the logs).  When any of these <strong>healthy</strong> devices receive word of the store corruption, they will initiate a store rebuild causing a brand new cloud store to be created populated by the old cloud store’s entities.  At this point, all devices will switch over to the new cloud store and the corruption state will be cleared.</p>
+
+<p>You are recommended to implement <code>-ubiquityStoreManager:handleCloudContentCorruptionWithHealthyStore:</code> by returning <code>NO</code> but informing the user of what is going on.  Here’s an example implementation that displays an alert for the user if his device needs to wait for another device to fix the corruption:</p>
+
+<pre><code>- (BOOL)ubiquityStoreManager:(UbiquityStoreManager *)manager
+        handleCloudContentCorruptionWithHealthyStore:(BOOL)storeHealthy {
+
+    if (![self.cloudAlert isVisible] &amp;&amp; manager.cloudEnabled &amp;&amp; !storeHealthy)
+        dispatch_async( dispatch_get_main_queue(), ^{
+            self.cloudAlert = [[UIAlertView alloc]
+                    initWithTitle:@"iCloud Sync Problem"
+                          message:@"\n\n\n\n"
+                @"Waiting for another device to auto‑correct the problem..."
+                         delegate:self
+                cancelButtonTitle:nil otherButtonTitles:@"Fix Now", nil];
+            UIActivityIndicatorView *activityIndicator = [[UIActivityIndicatorView alloc]
+                    initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+            activityIndicator.center = CGPointMake( 142, 90 );
+            [activityIndicator startAnimating];
+            [self.cloudAlert addSubview:activityIndicator];
+            [self.cloudAlert show];
+        } );
+
+    return NO;
+}
+</code></pre>
+
+<p>The above code gives the user the option of hitting the <code>Fix Now</code> button, which would invoke <code>[manager rebuildCloudContentFromCloudStoreOrLocalStore:YES]</code>.  Essentially, it initiates the cloud store rebuild locally.  More about this later.</p>
+
+<p>Your app can now deal with Apple’s iCloud bugs, congratulations!</p>
+
+<p>Unless you want to get into the deep water, <strong><em>you’re done now</em></strong>.  What follows is for brave souls or those seeking for maximum control.</p>
+
+<h1>What else have you got?</h1>
+
+<p>Since this is murky terrain, <code>UbiquityStoreManager</code> tries its best to keep interested delegates informed of what’s going on, and even gives it the ability to intervene in non-standard ways.</p>
+
+<p>If you use a logger, you can plug it in by implementing <code>-ubiquityStoreManager:log:</code>.  This method is called whenever the manager has something to say about what it’s doing.  We’re pretty verbose, so you may even want to implement this just to shut the manager up in production.</p>
+
+<p>If you’re interested in getting the full details about any error conditions, implement <code>-ubiquityStoreManager:didEncounterError:cause:context:</code> and you shall receive.</p>
+
+<p>If the cloud content gets deleted, the manager unloads the persistence stores.  This may happen, for instance, if the user has gone into <code>Settings</code> and deleted the iCloud data for your app, possibly in an attempt to make space on his iCloud account.  By default, this will leave your app without any persistence until the user restarts the app.  If iCloud is still enabled in the app, a new store will be created for him.  You could handle this a little differently, depending on what you think is right: You may want to just display a message to the user asking him whether he wants iCloud disabled or re-enabled.  Or you may want to just disable iCloud and switch to the local store.  You would handle this from <code>-ubiquityStoreManagerHandleCloudContentDeletion:</code>.</p>
+
+<p>If you read the previous section carefully, you should understand that problems may occur during the importing of ubiquitous changes made by other devices.  The default way of handling the situation can usually automatically resolve the situation but may take some time to completely come about and may involve user interaction.  You may choose to handle the situation differently by implementing <code>-ubiquityStoreManager:handleCloudContentCorruptionWithHealthyStore:</code> and returning <code>YES</code> after dealing with the corruption yourself.  The manager provides the following methods for you, which you can use for some low-level maintenance of the stores:</p>
+
+<ul>
+<li>
+<code>-reloadStore</code> — Just clear and re-open or retry opening the active store.</li>
+<li>
+<code>-deleteCloudContainerLocalOnly:</code> — All iCloud data for your application will be deleted.  That’s <strong><em>not just your Core Data store</em></strong>!</li>
+<li>
+<code>-deleteCloudStoreLocalOnly:</code> — Your Core Data cloud store will be deleted.</li>
+<li>
+<code>-deleteLocalStore</code> — This will delete your local store (ie. the store that’s active when <code>manager.cloudEnabled</code> is <code>NO</code>).</li>
+<li>
+<code>-migrateCloudToLocalAndDeleteCloudStoreLocalOnly:</code> — Stop using iCloud and migrate all cloud data into the local store.</li>
+<li>
+<code>-rebuildCloudContentFromCloudStoreOrLocalStore:</code> — This is where the cloud store rebuild magic happens.  Invoke this method to create a new cloud store and copy your current cloud data into it.</li>
+</ul><p>Many of these methods take a <code>localOnly</code> parameter.  Set it to <code>YES</code> if you don’t want to affect the user’s iCloud data.  The operation will happen on the local device only.  For instance, if you run <code>[manager deleteCloudStoreLocalOnly:YES]</code>, the cloud store on the device will be deleted.  If <code>cloudEnabled</code> is <code>YES</code>, the manager will subsequently re-open the cloud store which will cause a re-download of all iCloud’s transaction logs for the store.  These transaction logs will then get replayed locally causing your local store to be repopulated from what’s in iCloud.</p>
+
+<h1>License</h1>
+
+<p><code>UbiquityStoreManager</code> is licensed under the <a href="LICENSE">LGPLv3</a>.  Feel free to use it in any of your applications.  I’m also happy to receive any comments, feedback or review any pull requests.</p>
+        </section>
+
+        <footer>
+          UbiquityStoreManager is maintained by <a href="https://github.com/lhunath">lhunath</a><br>
+          This page was generated by <a href="http://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="http://twitter.com/jasonlong">Jason Long</a>.
+        </footer>
+
+        
+      </div>
+    </div>
+  </body>
+</html>
