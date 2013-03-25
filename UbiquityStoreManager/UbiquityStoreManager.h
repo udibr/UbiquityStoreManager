@@ -18,6 +18,7 @@
 //      - Recovering from exceptional events such as corrupted transaction logs
 //  - Some maintenance functionality:
 //      - Ability to rebuild the cloud store from transaction logs
+//      - Ability to rebuild the transaction logs from the cloud store
 //      - Ability to delete the cloud store (allowing it to be recreated from the local store)
 //      - Ability to nuke the entire cloud container
 //
@@ -25,10 +26,6 @@
 //  - Sometimes Apple's iCloud implementation hangs itself coordinating access for importing ubiquitous changes.
 //      - Reloading the store with -reloadStore can sometimes cause these changes to get imported.
 //      - If not, the app needs to be restarted.
-//  - Sometimes Apple's iCloud implementation will write corrupting transaction logs to the cloud container.
-//      - As a result, all other devices will fail to import any future changes to the store.
-//      - The only remedy is to recreate the store.
-//      - TODO: This manager allows the cloud store to be recreated and seeded by the old cloud store.
 //
 
 #import <Foundation/Foundation.h>

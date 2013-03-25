@@ -1264,9 +1264,6 @@ NSString *const CloudContentDirectory = @"CloudLogs";
             NSError *error = nil;
             if (![moc save:&error]) {
                 [self error:error cause:UbiquityStoreErrorCauseImportChanges context:note];
-
-                // Reloading the store will import the changes and make sure that the store hasn't been corrupted.
-                // TODO: Verify that this works reliably.
                 [self reloadStore];
                 return;
             }
