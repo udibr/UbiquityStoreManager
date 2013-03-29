@@ -18,6 +18,11 @@
 #import "UbiquityStoreManager.h"
 #import "JRSwizzle.h"
 #import "NSError+UbiquityStoreManager.h"
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#else
+#import <Cocoa/Cocoa.h>
+#endif
 
 
 NSString *const UbiquityManagedStoreDidChangeNotification = @"UbiquityManagedStoreDidChangeNotification";
