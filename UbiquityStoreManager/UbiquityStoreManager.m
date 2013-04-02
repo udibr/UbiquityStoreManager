@@ -24,7 +24,6 @@
 #import <Cocoa/Cocoa.h>
 #endif
 
-
 NSString *const UbiquityManagedStoreDidChangeNotification = @"UbiquityManagedStoreDidChangeNotification";
 NSString *const UbiquityManagedStoreDidImportChangesNotification = @"UbiquityManagedStoreDidImportChangesNotification";
 NSString *const CloudEnabledKey = @"USMCloudEnabledKey"; // local: Whether the user wants the app on this device to use iCloud.
@@ -1129,14 +1128,14 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
 - (void)keyValueStoreChanged:(NSNotification *)note {
 
-    NSUbiquitousKeyValueStore * cloud = [NSUbiquitousKeyValueStore defaultStore];
+    NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud synchronize];
 
     NSArray *changedKeys = (NSArray *)[note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangedKeysKey];
     if ([changedKeys containsObject:StoreUUIDKey]) {
         // The UUID of the active store changed.  We need to switch to the newly activated store.
         [self log:@"StoreUUID changed -> %@ (reason: %@)",
-              [cloud objectForKey:StoreUUIDKey], [note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangeReasonKey]];
+                  [cloud objectForKey:StoreUUIDKey], [note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangeReasonKey]];
 
         [self.persistentStorageQueue cancelAllOperations];
         [self.persistentStorageQueue addOperationWithBlock:^{
@@ -1153,7 +1152,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
         if (self.cloudEnabled)
             [self.persistentStorageQueue addOperationWithBlock:^{
                 if (![self handleCloudContentCorruption] && !self.cloudStoreLoaded)
-                    // Corruption was removed and our cloud store is not yet loaded.  Try loading the store again.
+                        // Corruption was removed and our cloud store is not yet loaded.  Try loading the store again.
                     [self reloadStore];
             }];
     }
@@ -1188,14 +1187,14 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     @"Cloud corruption can only be checked from the persistence queue.");
 
     if (!self.cloudEnabled)
-        // Cloud not enabled: cannot handle corruption.
+            // Cloud not enabled: cannot handle corruption.
         return NO;
 
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud synchronize];
 
     if (![cloud boolForKey:StoreContentCorruptedKey])
-        // Cloud content is not corrupt.
+            // Cloud content is not corrupt.
         return NO;
 
     // Unload the cloud store if it's loaded and corrupt.
@@ -1216,7 +1215,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     else {
         if (cloudStoreCorrupt)
-            // Store is corrupt: no store available.
+                // Store is corrupt: no store available.
             [self log:@"Handling cloud corruption with default strategy: Wait for a remote rebuild."];
         else {
             // Store is healthy: rebuild cloud store.
