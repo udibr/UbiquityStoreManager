@@ -29,6 +29,7 @@ NSString *const UbiquityManagedStoreDidImportChangesNotification = @"UbiquityMan
 NSString *const CloudEnabledKey = @"USMCloudEnabledKey"; // local: Whether the user wants the app on this device to use iCloud.
 NSString *const StoreUUIDKey = @"USMStoreUUIDKey"; // cloud: The UUID of the active cloud store.
 NSString *const StoreContentCorruptedKey = @"USMStoreCorruptedKey"; // cloud: Set to YES when a cloud content corruption has been detected.
+NSString *const CloudContentName = @"UbiquityStore";
 NSString *const CloudStoreDirectory = @"CloudStore.nosync";
 NSString *const CloudStoreMigrationSource = @"MigrationSource.sqlite";
 NSString *const CloudContentDirectory = @"CloudLogs";
@@ -49,6 +50,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 @property(nonatomic) BOOL attemptingCloudRecovery;
 @property(nonatomic) NSString *cloudStoreCorruptUUID;
 @property(nonatomic) BOOL cloudStoreLoaded;
+@property(nonatomic) BOOL cloudWasEnabled;
 @end
 
 @implementation UbiquityStoreManager {
@@ -79,11 +81,11 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     // Parameters.
     _delegate = delegate;
-    _contentName = contentName == nil? @"UbiquityStore": contentName;
+    _contentName = contentName == nil? CloudContentName: contentName;
     _model = model == nil? [NSManagedObjectModel mergedModelFromBundles:nil]: model;
     if (!localStoreURL)
         localStoreURL = [[[self URLForApplicationContainer]
-                URLByAppendingPathComponent:self.contentName isDirectory:NO]
+                URLByAppendingPathComponent:_contentName isDirectory:NO]
                 URLByAppendingPathExtension:@"sqlite"];
     _localStoreURL = localStoreURL;
     _containerIdentifier = containerIdentifier;
@@ -111,6 +113,9 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 #if TARGET_OS_IPHONE
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationDidBecomeActive:)
                                                  name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(userDefaultsDidChange:)
+                                                 name:NSUserDefaultsDidChangeNotification
                                                object:nil];
 //    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillEnterForeground:)
 //                                                 name:UIApplicationWillEnterForegroundNotification
@@ -975,7 +980,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 - (BOOL)cloudEnabled {
 
     NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-    return [local boolForKey:CloudEnabledKey];
+    return self.cloudWasEnabled = [local boolForKey:CloudEnabledKey];
 }
 
 - (void)setCloudEnabled:(BOOL)enabled {
@@ -986,7 +991,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     [self.persistentStorageQueue addOperationWithBlock:^{
         NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-        [local setBool:enabled forKey:CloudEnabledKey];
+        [local setBool:self.cloudWasEnabled = enabled forKey:CloudEnabledKey];
 
         [self reloadStore];
     }];
@@ -1095,6 +1100,12 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 }
 
 #pragma mark - Notifications
+
+- (void)userDefaultsDidChange:(NSNotification *)note {
+
+    if (self.cloudWasEnabled != self.cloudEnabled)
+        [self reloadStore];
+}
 
 - (void)applicationDidBecomeActive:(NSNotification *)note {
 
