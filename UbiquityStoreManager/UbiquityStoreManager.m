@@ -117,15 +117,6 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(userDefaultsDidChange:)
                                                  name:NSUserDefaultsDidChangeNotification
                                                object:nil];
-//    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillEnterForeground:)
-//                                                 name:UIApplicationWillEnterForegroundNotification
-//                                               object:nil];
-//    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationDidEnterBackground:)
-//                                                 name:UIApplicationDidEnterBackgroundNotification
-//                                               object:nil];
-//    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillTerminate:)
-//                                                 name:UIApplicationWillTerminateNotification
-//                                               object:nil];
 #else
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationDidBecomeActive:)
                                                  name:NSApplicationDidBecomeActiveNotification
@@ -202,6 +193,19 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     // Our cloud store's logs are in the cloud store transaction logs directory and is identified by the active storeUUID.
     return [[self URLForCloudContentDirectory] URLByAppendingPathComponent:self.storeUUID isDirectory:YES];
+}
+
+/**
+ * Contrary to -URLForCloudContent, this method can return nil, in which case the location of the cloud content has not yet been established.
+ */
+- (NSURL *)URLForCloudContent_ThreadSafe {
+
+    NSString *storeUUID = [self storeUUID_ThreadSafe];
+    if (!storeUUID)
+        return nil;
+
+    // Our cloud store's logs are in the cloud store transaction logs directory and is identified by the active storeUUID.
+    return [[self URLForCloudContentDirectory] URLByAppendingPathComponent:storeUUID isDirectory:YES];
 }
 
 - (NSURL *)URLForLocalStoreDirectory {
@@ -311,9 +315,6 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 - (void)reloadStore {
 
     [self log:@"(Re)loading store..."];
-    if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:willLoadStoreIsCloud:)])
-        [self.delegate ubiquityStoreManager:self willLoadStoreIsCloud:self.cloudEnabled];
-
     [self.persistentStorageQueue addOperationWithBlock:^{
         [self.persistentStoreCoordinator lock];
         @try {
@@ -997,7 +998,10 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     }];
 }
 
-- (NSString *)storeUUID {
+/**
+ * Contrary to -storeUUID, this method can return nil, in which case a cloud UUID has not yet been established.
+ */
+- (NSString *)storeUUID_ThreadSafe {
 
     if (self.tentativeStoreUUID)
             // A tentative StoreUUID is set; this means a new cloud store is being created.
@@ -1005,15 +1009,19 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud synchronize];
-    NSString *storeUUID = [cloud objectForKey:StoreUUIDKey];
+    return [cloud objectForKey:StoreUUIDKey];
+}
 
-    if (!storeUUID) {
+- (NSString *)storeUUID {
+
+    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
+    @"StoreUUID should only be accessed from the persistence queue.");
+
+    NSString *storeUUID = [self storeUUID_ThreadSafe];
+
+    if (!storeUUID)
         // No StoreUUID is set; this means there is no cloud store yet.  Set a new tentative StoreUUID to create one.
-        if ([NSOperationQueue currentQueue] == self.persistentStorageQueue)
-            return [self createTentativeStoreUUID];
-        else
-            return @"tentative"; // This is only for -presentedItemURL
-    }
+        return [self createTentativeStoreUUID];
 
     return storeUUID;
 }
@@ -1064,7 +1072,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 - (NSURL *)presentedItemURL {
 
     if (self.cloudEnabled)
-        return [self URLForCloudContent];
+        return [self URLForCloudContent_ThreadSafe];
 
     return [self URLForLocalStore];
 }

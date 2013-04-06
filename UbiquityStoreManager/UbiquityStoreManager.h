@@ -42,6 +42,10 @@ extern NSString *const UbiquityManagedStoreDidChangeNotification;
  * The store managed by the ubiquity manager's coordinator imported changes from iCloud (eg. another device saved changes to iCloud).
  */
 extern NSString *const UbiquityManagedStoreDidImportChangesNotification;
+/**
+ * The boolean value in the NSUserDefaults at this key specifies whether iCloud is enabled on this device.
+ */
+extern NSString *const CloudEnabledKey;
 
 typedef enum {
     UbiquityStoreErrorCauseNoError, // Nothing went wrong.  There is no context.
@@ -83,8 +87,12 @@ typedef enum {
 /** Triggered when the store manager begins loading a persistence store.
  *
  * Between this and an invocation of -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: or -ubiquityStoreManager:failedLoadingStoreWithCause:context:wasCloud:, the application should not be using the persistence coordinator.
+ *
  * You should probably unset your managed object contexts here to prevent exceptions/hangs in your applications (the coordinator is locked and its store removed).
- * Also useful for indicating in your user interface that the store is loading.
+ * This method is also useful for indicating in your user interface that the store is loading.
+ *
+ * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.  Any stores have
+ * been unloaded and there will be no store loaded when this method is called.  If you have migration work to do, do it here.
  *
  * @param isCloudStore YES if the cloud store will be loaded.
  *                     NO if the local store will be loaded.
@@ -95,7 +103,10 @@ typedef enum {
 /** Triggered when the store manager loads a persistence store.
  *
  * The manager is done handling the attempt to load the store.  This is where you'll init/update your application's persistence layer.
+ *
  * You should probably create your main managed object context here.
+ *
+ * This method will be invoked from the main queue.
  *
  * Note the coordinator could change during the application's lifetime (you'll get a new -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: if this happens).
  *
@@ -111,6 +122,8 @@ typedef enum {
  * If wasCloudStore is YES, -ubiquityStoreManager:handleCloudContentCorruptionIsCloud: will also be called.  You should handle the
  * failure there, or here if you don't plan to.
  * If wasCloudStore is NO, the local store may be irreparably broken.  You should probably -deleteLocalStore to fix the persistence layer.
+ *
+ * This method will be invoked from the main queue.
  *
  * @param wasCloudStore YES if the error was caused while attempting to load the cloud store.
  *                      NO if the error was caused while attempting to load the local store.
@@ -164,6 +177,10 @@ typedef enum {
  * Keep in mind that if storeHealthy is YES, the cloud store will, if enabled, still be loaded.  If storeHealthy is NO, the cloud store
  * will, if enabled, have been unloaded before this method is called and no store will be available at this point.
  *
+ * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.  The cloud store
+ * will have been unloaded and there will be no store loaded when this method is called unless when the cloud store is not enabled
+ * (in which case the local store may be loaded).
+ *
  * @param storeHealthy YES if this device has no loading or syncing problems with the cloud store.
  *                     NO if this device can no longer open or sync with the cloud store.
  * @return YES if you've handled the corruption yourself and want to disable the manager's default strategy for resolving corruption.
@@ -172,7 +189,7 @@ typedef enum {
 @optional
 - (BOOL)ubiquityStoreManager:(UbiquityStoreManager *)manager handleCloudContentCorruptionWithHealthyStore:(BOOL)storeHealthy;
 
-/** Triggered when the cloud content is deleted.
+/** Triggered when the cloud content is deleted while cloud is enabled.
  *
  * When the cloud store is deleted, it may be that the user has deleted his cloud data for the app from one of his devices.
  * It is therefore not necessarily desirable to immediately re-create a cloud store.  By default, the manager will just unload the store,
@@ -180,6 +197,8 @@ typedef enum {
  *
  * It may be desirable to show UI to the user allowing him to choose between re-enabling iCloud ([manager deleteCloudStoreLocalOnly:NO])
  * or disabling it and switching back to local data (manager.cloudEnabled = NO).
+ *
+ * This method will be invoked from a private queue.
  */
 @optional
 - (void)ubiquityStoreManagerHandleCloudContentDeletion:(UbiquityStoreManager *)manager;
@@ -187,6 +206,8 @@ typedef enum {
 /** Triggered when the store manager encounters an error.  Mainly useful to handle error conditions/logging in whatever way you see fit.
  *
  * If you don't implement this method, the manager will instead detail the error in a few log statements.
+ *
+ * This method will be invoked from the thread that experienced the error.  Avoid doing thread-sensitive or long-running tasks.
  */
 @optional
 - (void)ubiquityStoreManager:(UbiquityStoreManager *)manager didEncounterError:(NSError *)error
@@ -195,6 +216,8 @@ typedef enum {
 /** Triggered whenever the store manager has information to share about its operation.  Mainly useful to plug in your own logger.
  *
  * If you don't implement this method, the manager will just log the message using NSLog.
+ *
+ * This method will be invoked from the thread that logged the message.  Avoid doing thread-sensitive or long-running tasks.
  */
 @optional
 - (void)ubiquityStoreManager:(UbiquityStoreManager *)manager log:(NSString *)message;
@@ -202,6 +225,9 @@ typedef enum {
 /** Triggered when the store manager needs to perform a manual store migration.
  *
  * Implementing this method is required if you set -migrationStrategy to UbiquityStoreMigrationStrategyManual.
+ *
+ * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.  Any stores have
+ * been unloaded and there will be no store loaded when this method is called.
  *
  * @param error If the migration fails, write out an error object that describes the problem.
  * @return YES when the migration was successful and the new store may be loaded.
@@ -304,6 +330,8 @@ typedef enum {
 - (NSURL *)URLForCloudStoreDirectory;
 
 /**
+ * NOTE: Only invoke this method from the persistence queue (See delegate method documentation).
+ *
  * @return URL to the active cloud store's database.
  */
 - (NSURL *)URLForCloudStore;
@@ -314,6 +342,8 @@ typedef enum {
 - (NSURL *)URLForCloudContentDirectory;
 
 /**
+ * NOTE: Only invoke this method from the persistence queue (See delegate method documentation).
+ *
  * @return URL to the active cloud store's transaction logs.
  */
 - (NSURL *)URLForCloudContent;
