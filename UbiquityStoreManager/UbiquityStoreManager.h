@@ -45,7 +45,7 @@ extern NSString *const UbiquityManagedStoreDidImportChangesNotification;
 /**
  * The boolean value in the NSUserDefaults at this key specifies whether iCloud is enabled on this device.
  */
-extern NSString *const CloudEnabledKey;
+extern NSString *const USMCloudEnabledKey;
 
 typedef enum {
     UbiquityStoreErrorCauseNoError, // Nothing went wrong.  There is no context.
@@ -242,13 +242,33 @@ typedef enum {
 
 @interface UbiquityStoreManager : NSObject
 
-/** The delegate provides the managed object context to use and is informed of events in the ubiquity manager. */
+/**
+ * The delegate provides the managed object context to use and is informed of events in the ubiquity manager.
+ */
 @property(nonatomic, weak) id<UbiquityStoreManagerDelegate> delegate;
 
-/** Determines what strategy to use when migrating from one store to another (eg. local -> cloud).  Default is UbiquityStoreMigrationStrategyCopyEntities. */
+/**
+ * The URL where the local store will be loaded from.
+ *
+ * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
+ */
+@property(nonatomic, copy) NSURL *localStoreURL;
+
+/**
+ * Determines what strategy to use when migrating from one store to another (eg. local -> cloud).
+ * Default is UbiquityStoreMigrationStrategyCopyEntities.
+ *
+ * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
+ */
 @property(nonatomic, assign) UbiquityStoreMigrationStrategy migrationStrategy;
 
-/** Indicates whether the iCloud store or the local store is in use. */
+/**
+ * Indicates whether the iCloud store or the local store is in use.
+ *
+ * Changing this property will cause a reload of the active store.
+ */
 @property(nonatomic) BOOL cloudEnabled;
 
 /** Start managing an optionally ubiquitous store coordinator.
@@ -330,7 +350,8 @@ typedef enum {
 - (NSURL *)URLForCloudStoreDirectory;
 
 /**
- * NOTE: Only invoke this method from the persistence queue (See delegate method documentation).
+ * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @return URL to the active cloud store's database.
  */
@@ -342,7 +363,8 @@ typedef enum {
 - (NSURL *)URLForCloudContentDirectory;
 
 /**
- * NOTE: Only invoke this method from the persistence queue (See delegate method documentation).
+ * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @return URL to the active cloud store's transaction logs.
  */

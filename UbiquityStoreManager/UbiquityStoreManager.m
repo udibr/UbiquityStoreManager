@@ -26,19 +26,19 @@
 
 NSString *const UbiquityManagedStoreDidChangeNotification = @"UbiquityManagedStoreDidChangeNotification";
 NSString *const UbiquityManagedStoreDidImportChangesNotification = @"UbiquityManagedStoreDidImportChangesNotification";
-NSString *const CloudEnabledKey = @"USMCloudEnabledKey"; // local: Whether the user wants the app on this device to use iCloud.
-NSString *const StoreUUIDKey = @"USMStoreUUIDKey"; // cloud: The UUID of the active cloud store.
-NSString *const StoreContentCorruptedKey = @"USMStoreCorruptedKey"; // cloud: Set to YES when a cloud content corruption has been detected.
-NSString *const CloudContentName = @"UbiquityStore";
-NSString *const CloudStoreDirectory = @"CloudStore.nosync";
-NSString *const CloudStoreMigrationSource = @"MigrationSource.sqlite";
-NSString *const CloudContentDirectory = @"CloudLogs";
+
+NSString *const USMCloudEnabledKey = @"USMCloudEnabledKey"; // local: Whether the user wants the app on this device to use iCloud.
+NSString *const USMStoreUUIDKey = @"USMStoreUUIDKey"; // cloud: The UUID of the active cloud store.
+NSString *const USMStoreContentCorruptedKey = @"USMStoreContentCorruptedKey"; // cloud: Set to YES when a cloud content corruption has been detected.
+
+NSString *const USMCloudContentName = @"UbiquityStore";
+NSString *const USMCloudStoreDirectory = @"CloudStore.nosync";
+NSString *const USMCloudStoreMigrationSource = @"MigrationSource.sqlite";
+NSString *const USMCloudContentDirectory = @"CloudLogs";
 
 @interface UbiquityStoreManager()<NSFilePresenter>
-
 @property(nonatomic, copy) NSString *contentName;
 @property(nonatomic, strong) NSManagedObjectModel *model;
-@property(nonatomic, copy) NSURL *localStoreURL;
 @property(nonatomic, copy) NSString *containerIdentifier;
 @property(nonatomic, copy) NSDictionary *additionalStoreOptions;
 @property(nonatomic, readonly) NSString *storeUUID;
@@ -81,7 +81,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     // Parameters.
     _delegate = delegate;
-    _contentName = contentName == nil? CloudContentName: contentName;
+    _contentName = contentName == nil? USMCloudContentName: contentName;
     _model = model == nil? [NSManagedObjectModel mergedModelFromBundles:nil]: model;
     if (!localStoreURL)
         localStoreURL = [[[self URLForApplicationContainer]
@@ -173,7 +173,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     // We put the database in the ubiquity container with a .nosync extension (must not be synced by iCloud),
     // so that its presence is tied closely to whether iCloud is enabled or not on the device
     // and the user can delete the store by deleting his iCloud data for the app from Settings.
-    return [[self URLForCloudContainer] URLByAppendingPathComponent:CloudStoreDirectory isDirectory:YES];
+    return [[self URLForCloudContainer] URLByAppendingPathComponent:USMCloudStoreDirectory isDirectory:YES];
 }
 
 - (NSURL *)URLForCloudStore {
@@ -186,7 +186,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 - (NSURL *)URLForCloudContentDirectory {
 
     // The transaction logs are in the ubiquity container and are synced by iCloud.
-    return [[self URLForCloudContainer] URLByAppendingPathComponent:CloudContentDirectory isDirectory:YES];
+    return [[self URLForCloudContainer] URLByAppendingPathComponent:USMCloudContentDirectory isDirectory:YES];
 }
 
 - (NSURL *)URLForCloudContent {
@@ -811,7 +811,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud synchronize];
 
-    if (!self.tentativeStoreUUID && [cloud objectForKey:StoreUUIDKey])
+    if (!self.tentativeStoreUUID && [cloud objectForKey:USMStoreUUIDKey])
             // Migration is only safe when the target is a new store (tentative or no StoreUUID).
         return NO;
 
@@ -956,7 +956,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
         NSError *error = nil;
         __block NSError *error_ = nil;
         __block BOOL success = NO;
-        self.migrationStoreURL = [[self URLForCloudStoreDirectory] URLByAppendingPathComponent:CloudStoreMigrationSource isDirectory:NO];
+        self.migrationStoreURL = [[self URLForCloudStoreDirectory] URLByAppendingPathComponent:USMCloudStoreMigrationSource isDirectory:NO];
         [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
                 coordinateReadingItemAtURL:cloudStoreURL options:(NSFileCoordinatorReadingOptions)0
                           writingItemAtURL:self.migrationStoreURL options:NSFileCoordinatorWritingForReplacing
@@ -981,7 +981,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 - (BOOL)cloudEnabled {
 
     NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-    return self.cloudWasEnabled = [local boolForKey:CloudEnabledKey];
+    return self.cloudWasEnabled = [local boolForKey:USMCloudEnabledKey];
 }
 
 - (void)setCloudEnabled:(BOOL)enabled {
@@ -992,7 +992,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     [self.persistentStorageQueue addOperationWithBlock:^{
         NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-        [local setBool:self.cloudWasEnabled = enabled forKey:CloudEnabledKey];
+        [local setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];
 
         [self reloadStore];
     }];
@@ -1009,7 +1009,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
 
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud synchronize];
-    return [cloud objectForKey:StoreUUIDKey];
+    return [cloud objectForKey:USMStoreUUIDKey];
 }
 
 - (NSString *)storeUUID {
@@ -1037,8 +1037,8 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     if (self.tentativeStoreUUID) {
         [self log:@"Confirming tentative StoreUUID: %@", self.tentativeStoreUUID];
         NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
-        [cloud setObject:self.tentativeStoreUUID forKey:StoreUUIDKey];
-        [cloud removeObjectForKey:StoreContentCorruptedKey];
+        [cloud setObject:self.tentativeStoreUUID forKey:USMStoreUUIDKey];
+        [cloud removeObjectForKey:USMStoreContentCorruptedKey];
         [cloud synchronize];
 
         [self unsetTentativeStoreUUID];
@@ -1091,7 +1091,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
                 if (self.cloudEnabled) {
                     [self removeItemAtURL:[self URLForCloudStore] localOnly:NO];
                     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
-                    [cloud removeObjectForKey:StoreContentCorruptedKey];
+                    [cloud removeObjectForKey:USMStoreContentCorruptedKey];
                     [cloud synchronize];
                 }
             }]
@@ -1151,10 +1151,10 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     [cloud synchronize];
 
     NSArray *changedKeys = (NSArray *)[note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangedKeysKey];
-    if ([changedKeys containsObject:StoreUUIDKey]) {
+    if ([changedKeys containsObject:USMStoreUUIDKey]) {
         // The UUID of the active store changed.  We need to switch to the newly activated store.
         [self log:@"StoreUUID changed -> %@ (reason: %@)",
-                  [cloud objectForKey:StoreUUIDKey], [note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangeReasonKey]];
+                        [cloud objectForKey:USMStoreUUIDKey], [note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangeReasonKey]];
 
         [self.persistentStorageQueue cancelAllOperations];
         [self.persistentStorageQueue addOperationWithBlock:^{
@@ -1163,10 +1163,10 @@ NSString *const CloudContentDirectory = @"CloudLogs";
         }];
     }
 
-    if ([changedKeys containsObject:StoreContentCorruptedKey]) {
+    if ([changedKeys containsObject:USMStoreContentCorruptedKey]) {
         // Cloud content corruption was detected or cleared.
-        [self log:@"StoreContentCorruptedKey changed -> %@ (reason: %@)",
-                  [cloud objectForKey:StoreContentCorruptedKey], [note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangeReasonKey]];
+        [self log:@"USMStoreContentCorruptedKey changed -> %@ (reason: %@)",
+                        [cloud objectForKey:USMStoreContentCorruptedKey], [note.userInfo objectForKey:NSUbiquitousKeyValueStoreChangeReasonKey]];
 
         if (self.cloudEnabled)
             [self.persistentStorageQueue addOperationWithBlock:^{
@@ -1192,7 +1192,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     self.cloudStoreCorruptUUID = self.storeUUID;
 
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
-    [cloud setBool:YES forKey:StoreContentCorruptedKey];
+    [cloud setBool:YES forKey:USMStoreContentCorruptedKey];
     [cloud synchronize];
 
     [self.persistentStorageQueue addOperationWithBlock:^{
@@ -1212,7 +1212,7 @@ NSString *const CloudContentDirectory = @"CloudLogs";
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud synchronize];
 
-    if (![cloud boolForKey:StoreContentCorruptedKey])
+    if (![cloud boolForKey:USMStoreContentCorruptedKey])
             // Cloud content is not corrupt.
         return NO;
 
