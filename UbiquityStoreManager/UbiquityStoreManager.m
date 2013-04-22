@@ -338,18 +338,18 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
 
     // Mark store as healthy: opening the store now will tell us whether it's still corrupt.
     self.cloudStoreLoaded = NO;
+    
+    // Check if the user is logged into iCloud on the device.
+    if (![[NSFileManager defaultManager] ubiquityIdentityToken] || ![self URLForCloudContainer]) {
+        self.cloudEnabled = NO;
+        return;
+    }
 
     id context = nil;
     NSError *error = nil;
     UbiquityStoreErrorCause cause = UbiquityStoreErrorCauseNoError;
     @try {
         [self clearStore];
-
-        // Check if the user is logged into iCloud on the device.
-        if (![self URLForCloudContainer]) {
-            cause = UbiquityStoreErrorCauseNoAccount;
-            return;
-        }
 
         // Create the path to the cloud store and content if it doesn't exist yet.
         NSURL *cloudStoreURL = [self URLForCloudStore];
@@ -990,6 +990,10 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
             // No change, do nothing to avoid a needless store reload.
         return;
 
+    if (enabled && ![[NSFileManager defaultManager] ubiquityIdentityToken])
+            // Can't enable iCloud: No iCloud account is configured on the device.
+        return;
+    
     [self.persistentStorageQueue addOperationWithBlock:^{
         NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
         [local setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];

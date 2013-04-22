@@ -49,7 +49,6 @@ extern NSString *const USMCloudEnabledKey;
 
 typedef enum {
     UbiquityStoreErrorCauseNoError, // Nothing went wrong.  There is no context.
-    UbiquityStoreErrorCauseNoAccount, // The user is not logged into iCloud on this device.  There is no context.
     UbiquityStoreErrorCauseDeleteStore, // Error occurred while deleting the store file or its transaction logs.  context = the path of the store.
     UbiquityStoreErrorCauseCreateStorePath, // Error occurred while creating the path where the store needs to be saved.  context = the path of the store.
     UbiquityStoreErrorCauseClearStore, // Error occurred while removing a store from the coordinator.  context = the store.
