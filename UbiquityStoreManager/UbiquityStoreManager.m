@@ -12,7 +12,7 @@
 //  UbiquityStoreManager.m
 //  UbiquityStoreManager
 //
-//  Created by Maarten Billemont on 05/11/09.
+//  TODO: Put StoreUUID in a file for better control over whether it's definite and when it's synced.
 //
 
 #import "UbiquityStoreManager.h"
@@ -1039,8 +1039,18 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
     @"Tentative StoreUUID should only be confirmed from the persistence queue.");
 
     if (self.tentativeStoreUUID) {
-        [self log:@"Confirming tentative StoreUUID: %@", self.tentativeStoreUUID];
         NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
+        [cloud synchronize];
+        
+        // Make sure no definite StoreUUID was received since we created our tentative StoreUUID.
+        if ([cloud objectForKey:USMStoreUUIDKey]) {
+            [self log:@"NOT confirming tentative StoreUUID: %@, a definite StoreUUID is already set: %@",
+             self.tentativeStoreUUID, [cloud objectForKey:USMStoreUUIDKey]];
+            [self unsetTentativeStoreUUID];
+            return;
+        }
+        
+        [self log:@"Confirming tentative StoreUUID: %@", self.tentativeStoreUUID];
         [cloud setObject:self.tentativeStoreUUID forKey:USMStoreUUIDKey];
         [cloud removeObjectForKey:USMStoreContentCorruptedKey];
         [cloud synchronize];
