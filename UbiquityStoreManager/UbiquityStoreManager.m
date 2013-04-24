@@ -1203,7 +1203,9 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
 
 - (void)markCloudStoreCorrupted {
 
-    self.cloudStoreCorruptUUID = self.storeUUID;
+    if (!(self.cloudStoreCorruptUUID = self.storeUUID_ThreadSafe))
+        // Cloud store is not definite.  This can't happen since tentative stores aren't ubiquitous yet.
+        return;
 
     NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
     [cloud setBool:YES forKey:USMStoreContentCorruptedKey];

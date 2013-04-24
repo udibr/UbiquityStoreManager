@@ -15,8 +15,12 @@ NSString *const UbiquityManagedStoreDidDetectCorruptionNotification = @"Ubiquity
 - (id)init_USM_WithDomain:(NSString *)domain code:(NSInteger)code userInfo:(NSDictionary *)dict {
 
     self = [self init_USM_WithDomain:domain code:code userInfo:dict];
-    if ([domain isEqualToString:NSCocoaErrorDomain] && code == 134302)
-        [[NSNotificationCenter defaultCenter] postNotificationName:UbiquityManagedStoreDidDetectCorruptionNotification object:self];
+    if ([domain isEqualToString:NSCocoaErrorDomain] && code == 134302) {
+        NSError *cause = [dict objectForKey:NSUnderlyingErrorKey];
+        NSLog( @"Detected Ubiquity import error: %@\ncause: %@", self, cause );
+        if (cause)
+            [[NSNotificationCenter defaultCenter] postNotificationName:UbiquityManagedStoreDidDetectCorruptionNotification object:self];
+    }
 
     return self;
 }
