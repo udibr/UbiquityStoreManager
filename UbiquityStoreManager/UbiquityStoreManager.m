@@ -1116,6 +1116,8 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
     if (self.cloudEnabled) {
         if ([self.delegate respondsToSelector:@selector(ubiquityStoreManagerHandleCloudContentDeletion:)])
             [self.delegate ubiquityStoreManagerHandleCloudContentDeletion:self];
+        else
+            self.cloudEnabled = NO;
     }
     else
         [self reloadStore];
