@@ -191,8 +191,8 @@ typedef enum {
 /** Triggered when the cloud content is deleted while cloud is enabled.
  *
  * When the cloud store is deleted, it may be that the user has deleted his cloud data for the app from one of his devices.
- * It is therefore not necessarily desirable to immediately re-create a cloud store.  By default, the manager will just unload the store,
- * leaving you with no persistence.
+ * It is therefore not necessarily desirable to immediately re-create a cloud store.  By default, the manager will unload the cloud store
+ * and fall back to the local store.
  *
  * It may be desirable to show UI to the user allowing him to choose between re-enabling iCloud ([manager deleteCloudStoreLocalOnly:NO])
  * or disabling it and switching back to local data (manager.cloudEnabled = NO).
