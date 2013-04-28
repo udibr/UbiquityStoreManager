@@ -234,20 +234,26 @@ typedef enum {
  */
 @optional
 - (BOOL)ubiquityStoreManager:(UbiquityStoreManager *)manager
-        manuallyMigrateStore:(NSURL *)oldStore withOptions:oldStoreOptions
-                     toStore:(NSURL *)newStore withOptions:newStoreOptions error:(NSError **)error;
+        manuallyMigrateStore:(NSURL *)oldStoreURL withOptions:(NSDictionary *)oldStoreOptions
+                     toStore:(NSURL *)newStoreURL withOptions:(NSDictionary *)newStoreOptions error:(NSError **)error;
 
 @end
 
 @interface UbiquityStoreManager : NSObject
 
+#pragma mark - Setup
+
 /**
  * The delegate provides the managed object context to use and is informed of events in the ubiquity manager.
+ *
+ * You probably won't need to touch this (it is set from init).
  */
 @property(nonatomic, weak) id<UbiquityStoreManagerDelegate> delegate;
 
 /**
  * The URL where the local store will be loaded from.
+ *
+ * You probably won't need to touch this (it is set from init).
  *
  * NOTE: Use this only from the persistence queue (see delegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
@@ -256,7 +262,8 @@ typedef enum {
 
 /**
  * Determines what strategy to use when migrating from one store to another (eg. local -> cloud).
- * Default is UbiquityStoreMigrationStrategyCopyEntities.
+ *
+ * The default is UbiquityStoreMigrationStrategyCopyEntities.
  *
  * NOTE: Use this only from the persistence queue (see delegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
@@ -267,6 +274,9 @@ typedef enum {
  * Indicates whether the iCloud store or the local store is in use.
  *
  * Changing this property will cause a reload of the active store.
+ *
+ * NOTE: You are recommended to only set this as a result of a user action or
+ *       from -ubiquityStoreManager:willLoadStoreIsCloud:
  */
 @property(nonatomic) BOOL cloudEnabled;
 
@@ -282,7 +292,7 @@ typedef enum {
  containerIdentifier:(NSString *)containerIdentifier additionalStoreOptions:(NSDictionary *)additionalStoreOptions
             delegate:(id<UbiquityStoreManagerDelegate>)delegate;
 
-#pragma mark - Store Management
+#pragma mark - Maintenance
 
 /**
  * Clear and re-open the store.
@@ -331,7 +341,7 @@ typedef enum {
  */
 - (void)rebuildCloudContentFromCloudStoreOrLocalStore:(BOOL)allowRebuildFromLocalStore;
 
-#pragma mark - Store Information
+#pragma mark - Information
 
 /**
  * Determine whether it's safe to seed the cloud store with a local store.
@@ -378,5 +388,26 @@ typedef enum {
  * @return URL to the local store's database.
  */
 - (NSURL *)URLForLocalStore;
+
+#pragma mark - Utilities
+
+/**
+ * Migrate a store to another by copying all metadata, entities and relationships from the migration store to the target store.
+ *
+ * This is the implementation of the UbiquityStoreMigrationStrategyCopyEntities strategy, in case you want it for your own migration code.
+ *
+ * @param migrationStoreURL The URL to the store file of the store from which to copy data.
+ * @param migrationStoreOptions The options to use when opening the migration store.  These should probably include NSReadOnlyPersistentStoreOption.
+ * @param targetStoreURL The URL to the store file of the store into which the data should be copied.
+ * @param targetStoreOptions The options to use when opening the target store.  If the target store is ubiquitous, these should include the appropriate ubiquity options.
+ * @param outError When the migration fails, this will point to an NSError object that describes the failure.
+ * @param cause When the migration fails, this will point to the cause of the problem which indicates when the failure occurred.
+ * @param context See the documentation for the cause to determine what the context will be.
+ *
+ * @return NO if the migration was unsuccessful for any reason.  YES if the target store contains the migration store's entities.
+ */
+- (BOOL)copyMigrateStore:(NSURL *)migrationStoreURL withOptions:(NSDictionary *)migrationStoreOptions
+                 toStore:(NSURL *)targetStoreURL withOptions:(NSDictionary *)targetStoreOptions
+                   error:(NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(id *)context;
 
 @end
