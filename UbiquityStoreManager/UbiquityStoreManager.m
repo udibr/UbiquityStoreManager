@@ -292,8 +292,6 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
     @"Store should only be cleared from the persistence queue.");
 
     [self log:@"Clearing stores..."];
-    if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:willLoadStoreIsCloud:)])
-        [self.delegate ubiquityStoreManager:self willLoadStoreIsCloud:self.cloudEnabled];
 
     // Remove the store from the coordinator.
     self.cloudStoreLoaded = NO;
@@ -303,9 +301,13 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
         if (![self.persistentStoreCoordinator removePersistentStore:store error:&error])
             [self error:error cause:UbiquityStoreErrorCauseClearStore context:store];
 
-    if ([self.persistentStoreCoordinator.persistentStores count])
-            // We couldn't remove all the stores, make a new PSC instead.
-        [self resetPersistentStoreCoordinator];
+    // I'd prefer to do this before removing the stores, but that can sometimes cause a bug in iOS where the PSC will notify a dead MOC.
+    if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:willLoadStoreIsCloud:)])
+        [self.delegate ubiquityStoreManager:self willLoadStoreIsCloud:self.cloudEnabled];
+
+    // I'd prefer to keep the PSC around and only reset it if for some reason -removePersistentStore:error: fails, but keeping the PSC
+    // around can still trigger the above iOS bug by notifying a dead MOC when adding a store to the old PSC later on.
+    [self resetPersistentStoreCoordinator];
 
     dispatch_async( dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:UbiquityManagedStoreDidChangeNotification
