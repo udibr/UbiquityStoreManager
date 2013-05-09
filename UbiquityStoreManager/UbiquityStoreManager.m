@@ -150,8 +150,8 @@ NSString *const USMCloudContentStoreUUID = @"StoreUUID";
 
 - (void)dealloc {
 
-
     // Stop listening for store changes.
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     if (self.storeFilePresenter)
         [NSFileCoordinator removeFilePresenter:self.storeFilePresenter];
     if (self.storeUUIDPresenter)
@@ -312,6 +312,7 @@ NSString *const USMCloudContentStoreUUID = @"StoreUUID";
         wasLocked = ![_persistentStoreCoordinator tryLock];
         [_persistentStoreCoordinator unlock];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:nil object:_persistentStoreCoordinator];
+        _persistentStoreCoordinator = nil;
     }
 
     if (wasLocked)
@@ -344,9 +345,16 @@ NSString *const USMCloudContentStoreUUID = @"StoreUUID";
     if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:willLoadStoreIsCloud:)])
         [self.delegate ubiquityStoreManager:self willLoadStoreIsCloud:self.cloudEnabled];
 
-    // I'd prefer to keep the PSC around and only reset it if for some reason -removePersistentStore:error: fails, but keeping the PSC
-    // around can still trigger the above iOS bug by notifying a dead MOC when adding a store to the old PSC later on.
-    [self resetPersistentStoreCoordinator];
+    // If we failed to remove all the stores, throw away the PSC and create a new one.
+    // Otherwise, just unlock it for a second to allow its MOCs to deallocate (weird, yes).
+    if ([[self.persistentStoreCoordinator persistentStores] count])
+        [self resetPersistentStoreCoordinator];
+    else {
+        BOOL wasLocked = ![self.persistentStoreCoordinator tryLock];
+        [self.persistentStoreCoordinator unlock];
+        if (wasLocked)
+            [self.persistentStoreCoordinator lock];
+    }
 
     dispatch_async( dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:UbiquityManagedStoreDidChangeNotification
