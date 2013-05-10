@@ -23,33 +23,44 @@
 - (BOOL)downloadAndWait {
 
     do {
-        CFURLClearResourcePropertyCache((__bridge CFURLRef)(self));
-        
-        NSNumber *ubiquitous, *conflicts, *downloaded, *downloading;
-        if (![self getResourceValue:&ubiquitous forKey:NSURLIsUbiquitousItemKey error:nil])
+        // We use CF API here because it gives us complete control over resetting the property cache.
+        // Without this, we sometimes land in an infinite "downloading" loop.
+        // I've seen at least one instance where we get stuck in an infinite "downloading" loop without any download actually progressing
+        // while the data is already present, which was resolved only by .. rebooting the device.
+        CFURLRef cfSelf = (__bridge CFURLRef)(self);
+        CFURLClearResourcePropertyCache( cfSelf );
+        NSDictionary *properties = (__bridge_transfer NSDictionary *)CFURLCopyResourcePropertiesForKeys( cfSelf, (__bridge CFArrayRef)@[
+                NSURLIsUbiquitousItemKey,
+                NSURLUbiquitousItemHasUnresolvedConflictsKey,
+                NSURLUbiquitousItemIsDownloadedKey,
+                NSURLUbiquitousItemIsDownloadingKey
+        ], NULL );
+        if (!properties)
+                // No resources available for this URL: resource doesn't exist.
             return NO;
-        
-        if (![ubiquitous boolValue])
+
+        if (![properties[NSURLIsUbiquitousItemKey] boolValue])
+                // URL is not ubiquitous: no need to wait for it.
             return YES;
 
-        if (![self getResourceValue:&conflicts forKey:NSURLUbiquitousItemHasUnresolvedConflictsKey error:nil])
-            return NO;
-        
-        if ([conflicts boolValue])
-            return YES;
-        
-        if (![self getResourceValue:&downloaded forKey:NSURLUbiquitousItemIsDownloadedKey error:nil])
-            return NO;
-
-        if ([downloaded boolValue])
+        if ([properties[NSURLUbiquitousItemIsDownloadedKey] boolValue])
+                // URL is downloaded: done waiting for it.
             return YES;
 
-        if (![self getResourceValue:&downloading forKey:NSURLUbiquitousItemIsDownloadingKey error:nil])
+        if ([properties[NSURLUbiquitousItemHasUnresolvedConflictsKey] boolValue])
+                // URL is in conflict: its data is present, just needs resolution.
+            return YES;
+
+        if (![properties[NSURLUbiquitousItemIsDownloadingKey] boolValue] &&
+            ![[NSFileManager defaultManager] startDownloadingUbiquitousItemAtURL:self error:nil])
+                // Couldn't start downloading URL: resource probably disappeared.
             return NO;
 
-        if (![downloading boolValue] && ![[NSFileManager defaultManager] startDownloadingUbiquitousItemAtURL:self error:nil])
-            return NO;
-        
+        //if ([[NSData dataWithContentsOfURL:self] length])
+        //    printf( "+" );
+        //else
+        //    printf( "." );
+
         [NSThread sleepForTimeInterval:0.1];
     } while (true);
 }

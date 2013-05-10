@@ -57,6 +57,7 @@ typedef enum {
     UbiquityStoreErrorCauseSeedStore, // Error occurred while seeding the store.  context = the path of the seed store.
     UbiquityStoreErrorCauseImportChanges, // Error occurred while importing changes from the cloud into the application's context.  context = the DidImportUbiquitousContentChanges notification.
     UbiquityStoreErrorCauseConfirmActiveStore, // Error occurred while confirming a new active store.  context = The url that couldn't be created or updated to confirm the store.
+    UbiquityStoreErrorCauseCorruptActiveStore, // Error occurred while marking the active store as corrupt.  context = The url that couldn't be created or updated to mark the store corrupt.
 } UbiquityStoreErrorCause;
 
 typedef enum {
