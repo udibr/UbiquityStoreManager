@@ -9,8 +9,7 @@
  */
 
 //
-//  NSURL(USM).h
-//  NSURL(USM)
+//  NSURL(UbiquityStoreManager)
 //
 //  Created by lhunath on 2013-05-08.
 //  Copyright, lhunath (Maarten Billemont) 2013. All rights reserved.
@@ -20,6 +19,6 @@
 
 @interface NSURL(UbiquityStoreManager)
 
-- (BOOL)downloadAndWait;
+- (BOOL)downloadUbiquitousContent;
 
 @end

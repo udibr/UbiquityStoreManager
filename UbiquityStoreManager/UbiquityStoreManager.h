@@ -21,11 +21,7 @@
 //      - Ability to rebuild the transaction logs from the cloud store
 //      - Ability to delete the cloud store (allowing it to be recreated from the local store)
 //      - Ability to nuke the entire cloud container
-//
-// Known issues:
-//  - Sometimes Apple's iCloud implementation hangs itself coordinating access for importing ubiquitous changes.
-//      - Reloading the store with -reloadStore can sometimes cause these changes to get imported.
-//      - If not, the app needs to be restarted.
+//      - Migrate one store to another by copying all entities
 //
 
 #import <Foundation/Foundation.h>
@@ -37,11 +33,11 @@
  *
  * This notification is posted after the -ubiquityStoreManager:willLoadStoreIsCloud: or -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: message was posted to the delegate.
  */
-extern NSString *const UbiquityManagedStoreDidChangeNotification;
+extern NSString *const USMStoreDidChangeNotification;
 /**
  * The store managed by the ubiquity manager's coordinator imported changes from iCloud (eg. another device saved changes to iCloud).
  */
-extern NSString *const UbiquityManagedStoreDidImportChangesNotification;
+extern NSString *const USMStoreDidImportChangesNotification;
 /**
  * The boolean value in the NSUserDefaults at this key specifies whether iCloud is enabled on this device.
  */
@@ -52,12 +48,12 @@ typedef enum {
     UbiquityStoreErrorCauseDeleteStore, // Error occurred while deleting the store file or its transaction logs.  context = the path of the store.
     UbiquityStoreErrorCauseCreateStorePath, // Error occurred while creating the path where the store needs to be saved.  context = the path of the store.
     UbiquityStoreErrorCauseClearStore, // Error occurred while removing a store from the coordinator.  context = the store.
-    UbiquityStoreErrorCauseOpenActiveStore, // Error occurred while opening the active store.  context = the path of the store.
+    UbiquityStoreErrorCauseOpenActiveStore, // Error occurred while opening the active store.  context = the path that couldn't be opened.
     UbiquityStoreErrorCauseOpenSeedStore, // Error occurred while opening the seed store.  context = the path of the store.
     UbiquityStoreErrorCauseSeedStore, // Error occurred while seeding the store.  context = the path of the seed store.
     UbiquityStoreErrorCauseImportChanges, // Error occurred while importing changes from the cloud into the application's context.  context = the DidImportUbiquitousContentChanges notification.
     UbiquityStoreErrorCauseConfirmActiveStore, // Error occurred while confirming a new active store.  context = The url that couldn't be created or updated to confirm the store.
-    UbiquityStoreErrorCauseCorruptActiveStore, // Error occurred while marking the active store as corrupt.  context = The url that couldn't be created or updated to mark the store corrupt.
+    UbiquityStoreErrorCauseCorruptActiveStore, // Error occurred while handling store corruption.  context = The path that couldn't be read, created or updated.
 } UbiquityStoreErrorCause;
 
 typedef enum {
@@ -79,7 +75,7 @@ typedef enum {
  * If you do implement this method, the changes will be merged into your managed object context
  * and the context will be saved afterwards.
  *
- * Regardless of whether this method is implemented or not, a UbiquityManagedStoreDidImportChangesNotification will be
+ * Regardless of whether this method is implemented or not, a USMStoreDidImportChangesNotification will be
  * posted after the changes are successfully imported into the store.
  */
 @optional
@@ -87,13 +83,21 @@ typedef enum {
 
 /** Triggered when the store manager begins loading a persistence store.
  *
- * Between this and an invocation of -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: or -ubiquityStoreManager:failedLoadingStoreWithCause:context:wasCloud:, the application should not be using the persistence coordinator.
+ * After this and before -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud:, the application should not be using the persistence
+ * coordinator.  It is therefore a good idea to unset your managed contexts here.
  *
- * You should probably unset your managed object contexts here to prevent exceptions/hangs in your applications (the coordinator is locked and its store removed).
- * This method is also useful for indicating in your user interface that the store is loading.
+ * This method is useful for indicating in your user interface that the store is loading.
+ * You should unset your managed object contexts here to prevent exceptions/hangs in your applications while the store changes.
+ * Do this in a -performBlockAndWait: block, so that the execution of -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: is blocked
+ * until your managed context's pending blocks have been processed and it is properly saved.  For example:
  *
- * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.  Any stores have
- * been unloaded and there will be no store loaded when this method is called.  If you have migration work to do, do it here.
+ *     [self.moc performBlockAndWait:^{
+ *         [self.moc save:nil];
+ *         self.moc = nil;
+ *     }];
+ *
+ * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.
+ * If you have migration work to do, do it here.
  *
  * @param isCloudStore YES if the cloud store will be loaded.
  *                     NO if the local store will be loaded.

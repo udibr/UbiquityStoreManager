@@ -9,8 +9,7 @@
  */
 
 //
-//  NSURL(USM).h
-//  NSURL(USM)
+//  NSURL(UbiquityStoreManager)
 //
 //  Created by lhunath on 2013-05-08.
 //  Copyright, lhunath (Maarten Billemont) 2013. All rights reserved.
@@ -20,7 +19,7 @@
 
 @implementation NSURL(UbiquityStoreManager)
 
-- (BOOL)downloadAndWait {
+- (BOOL)downloadUbiquitousContent {
 
     do {
         // We use CF API here because it gives us complete control over resetting the property cache.
@@ -56,13 +55,8 @@
                 // Couldn't start downloading URL: resource probably disappeared.
             return NO;
 
-        //if ([[NSData dataWithContentsOfURL:self] length])
-        //    printf( "+" );
-        //else
-        //    printf( "." );
-
         [NSThread sleepForTimeInterval:0.1];
-    } while (true);
+    } while (YES);
 }
 
 @end
