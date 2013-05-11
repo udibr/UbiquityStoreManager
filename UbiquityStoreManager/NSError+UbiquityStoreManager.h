@@ -1,8 +1,11 @@
-//
-// Created by lhunath on 2013-03-13.
-//
-// To change the template use AppCode | Preferences | File Templates.
-//
+/**
+ * Copyright Maarten Billemont (http://www.lhunath.com, lhunath@lyndir.com)
+ *
+ * See the enclosed file LICENSE for license information (LASGPLv3).
+ *
+ * @author   Maarten Billemont <lhunath@lyndir.com>
+ * @license  Lesser-AppStore General Public License
+ */
 
 
 #import <Foundation/Foundation.h>

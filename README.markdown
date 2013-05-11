@@ -191,4 +191,6 @@ Any store migration can be performed by one of four strategies:
 
 # License
 
-`UbiquityStoreManager` is licensed under the [LGPLv3](LICENSE).  Feel free to use it in any of your applications.  I’m also happy to receive any comments, feedback or review any pull requests.
+`UbiquityStoreManager` is licensed under the [LASGPLv3](LICENSE).  The LASGPLv3 is a modified version of the LGPLv3 with an App Store exemption clause which voids any LGPLv3 language that conflicts with Apple's App Store conditions.  While it's unsure whether the terms of the LGPLv3 are compatible with App Store distribution, this modification of the license makes compatibility explicit and removes any uncertainty.
+
+Feel free to use it in any of your applications.  I’m also happy to receive any comments, feedback or review any pull requests.

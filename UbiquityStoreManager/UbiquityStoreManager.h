@@ -1,3 +1,12 @@
+/**
+ * Copyright Maarten Billemont (http://www.lhunath.com, lhunath@lyndir.com)
+ *
+ * See the enclosed file LICENSE for license information (LASGPLv3).
+ *
+ * @author   Maarten Billemont <lhunath@lyndir.com>
+ * @license  Lesser-AppStore General Public License
+ */
+
 //
 //  UbiquityStoreManager.h
 //  UbiquityStoreManager
