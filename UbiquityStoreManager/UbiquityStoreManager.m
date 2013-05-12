@@ -1165,6 +1165,33 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     return storeUUID;
 }
 
+- (void)setStoreUUID:(NSString *)newStoreUUID {
+
+    // Make sure we're on the persistence queue, perform reload synchronously if we already are.
+    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue) {
+        [self.persistentStorageQueue addOperationWithBlock:^{
+            [self setStoreUUID:newStoreUUID];
+        }];
+        return;
+    }
+
+    // A new cloud store went live: clear any old cloud corruption.
+    [self removeItemAtURL:[self URLForCloudCorruptedUUID] localOnly:NO];
+
+    // Tell all other devices about our new cloud store's UUID.
+    NSError *error = nil;
+    NSURL *storeUUIDFile = [self URLForCloudStoreUUID];
+    [[[NSFileCoordinator alloc] initWithFilePresenter:self.storeUUIDPresenter]
+            coordinateWritingItemAtURL:storeUUIDFile options:NSFileCoordinatorWritingForMerging error:&error byAccessor:
+            ^(NSURL *newURL) {
+                NSError *error_ = nil;
+                if (![newStoreUUID writeToURL:newURL atomically:NO encoding:NSASCIIStringEncoding error:&error_])
+                    [self error:error_ cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
+            }];
+    if (error)
+        [self error:error cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
+}
+
 /**
  * When a tentative StoreUUID is set, this operation confirms it and writes it as the new StoreUUID to the iCloud KVS.
  */
@@ -1176,22 +1203,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     if (self.tentativeStoreUUID) {
         [self log:@"Confirming tentative StoreUUID: %@", self.tentativeStoreUUID];
 
-        // A new cloud store went live: clear any old cloud corruption.
-        [self removeItemAtURL:[self URLForCloudCorruptedUUID] localOnly:NO];
-
-        // Tell all other devices about our new cloud store's UUID.
-        NSError *error = nil;
-        NSURL *storeUUIDFile = [self URLForCloudStoreUUID];
-        [[[NSFileCoordinator alloc] initWithFilePresenter:self.storeUUIDPresenter]
-                coordinateWritingItemAtURL:storeUUIDFile options:NSFileCoordinatorWritingForMerging error:&error byAccessor:
-                ^(NSURL *newURL) {
-                    NSError *error_ = nil;
-                    if (![self.tentativeStoreUUID writeToURL:newURL atomically:NO encoding:NSASCIIStringEncoding error:&error_])
-                        [self error:error_ cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
-                }];
-        if (error)
-            [self error:error cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
-
+        [self setStoreUUID:self.tentativeStoreUUID];
         [self unsetTentativeStoreUUID];
     }
 }
