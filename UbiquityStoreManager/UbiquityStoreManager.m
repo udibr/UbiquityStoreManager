@@ -1550,7 +1550,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
             }];
 
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-        [self.query startQuery];
+        if (![self.query startQuery])
+            [self.delegate log:@"Couldn't start monitor query for %@, already running?", [self.presentedItemURL lastPathComponent]];
     }];
 }
 

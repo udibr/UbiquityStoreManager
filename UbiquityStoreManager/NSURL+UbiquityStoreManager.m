@@ -20,6 +20,8 @@
 
 - (BOOL)downloadUbiquitousContent {
 
+    NSAssert(![[NSThread currentThread] isMainThread], @"Should not be waiting for URLs to download from the main queue.");
+
     do {
         // We use CF API here because it gives us complete control over resetting the property cache.
         // Without this, we sometimes land in an infinite "downloading" loop.
