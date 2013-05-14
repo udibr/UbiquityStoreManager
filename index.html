@@ -163,6 +163,19 @@
 <code>-rebuildCloudContentFromCloudStoreOrLocalStore:</code> — This is where the cloud store rebuild magic happens.  Invoke this method to create a new cloud store and copy your current cloud data into it.</li>
 </ul><p>Many of these methods take a <code>localOnly</code> parameter.  Set it to <code>YES</code> if you don’t want to affect the user’s iCloud data.  The operation will happen on the local device only.  For instance, if you run <code>[manager deleteCloudStoreLocalOnly:YES]</code>, the cloud store on the device will be deleted.  If <code>cloudEnabled</code> is <code>YES</code>, the manager will subsequently re-open the cloud store which will cause a re-download of all iCloud’s transaction logs for the store.  These transaction logs will then get replayed locally causing your local store to be repopulated from what’s in iCloud.</p>
 
+<h2><code>parseLogs</code></h2>
+
+<p>The <a href="parseLogs"><code>parseLogs</code></a> bash script allows you to analyse the output of Apple's verbose ubiquity log output and give you some feedback on it.  It is in a very young stage, but is aimed at aiding with debugging any iCloud related sync issues.</p>
+
+<p><img src="http://stuff.lhunath.com/shots/shot.1368550601.png" alt="parseLogs screenshot"></p>
+
+<p>To use the script, just run it (with PWD set to the location of the script or after copying its <code>bashlib</code> dependency into <code>PATH</code>), feeding it the ubiquity log over <code>STDIN</code>:</p>
+
+<pre><code>./parseLogs &lt; myapp.logs
+</code></pre>
+
+<p>To make it more verbose, add <code>-v</code> options.  Verbose output will show unprocessed log lines as well.  It is the aim of this script to process all log lines output by Apple's ubiquity logging.  You can contribute either by amending the script or the <a href="LOGS"><code>LOGS</code></a> summary file.</p>
+
 <h1>Under The Hood</h1>
 
 <p><code>UbiquityStoreManager</code> tries hard to hide all the details from you, maintaining the persistentStoreCoordinator for you.  If you're interested in what it does and how things work, read on.</p>
