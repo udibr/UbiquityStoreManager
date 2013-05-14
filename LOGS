@@ -1,0 +1,39 @@
+Reading ubiquity log output.
+
+
+CoreData: Ubiquity:  <_PFUbiquityRecordsExporter: ...> ... exporting ...
+    This indicates that you have saved changes to a MOC to the store and iCloud is preparing to create a transaction log for them.
+    It details the managed objects whose changes will exported into the log.
+
+    Should be followed by:
+        CoreData: Ubiquity:  Initializing stack
+        CoreData: Ubiquity:  <_PFUbiquityRecordsExporter: ... Successfully wrote transaction log: ...
+        CoreData: Ubiquity:  Stack Changes:
+
+
+CoreData: Ubiquity:  Got final value for relationship: ... ... Object: ...
+    This indicates that a relationship is being modified as part of the changes written to the stack.
+
+
+CoreData: Ubiquity:  Baseline exists in the cloud, will evaluate other criteria to see if a new one can be rolled.
+    Core Data is considdering rolling your transactions into a new baseline snapshot.
+
+    Usually followed by:
+        CoreData: Ubiquity:  Not enough log bytes to roll: ...
+
+
+CoreData: Ubiquity:  <_PFUbiquityRecordsImporter: ...>: ... Finished scheduling logs with context: ...
+    Core Data has detected a new transaction log and is preparing to import it.
+    It details the transaction logs that are going to be imported.
+
+    Should be followed by:
+        CoreData: Ubiquity:  Changes applied for transaction log content, managed object context changes: ...
+            Details the changes that were imported into the store.
+        CoreData: Ubiquity:  Posting import notification: : ...
+            Details the notification that is sent to the app for importing the changes into its MOCs.
+
+
+CoreData: Ubiquity:  <_PFUbiquityRecordsImporter ...>: ... Skipping log because it has already been imported into the local store: ...
+    Core Data has detected changes to a transaction log that has already been imported into the store and is ignoring them.
+
+    If you suspect this might be a cause of your issues, you could try deleting your sqlite file and letting Core Data rebuild it from the transaction logs.

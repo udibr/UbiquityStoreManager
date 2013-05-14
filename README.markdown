@@ -120,6 +120,16 @@ If you read the previous section carefully, you should understand that problems 
 
 Many of these methods take a `localOnly` parameter.  Set it to `YES` if you don’t want to affect the user’s iCloud data.  The operation will happen on the local device only.  For instance, if you run `[manager deleteCloudStoreLocalOnly:YES]`, the cloud store on the device will be deleted.  If `cloudEnabled` is `YES`, the manager will subsequently re-open the cloud store which will cause a re-download of all iCloud’s transaction logs for the store.  These transaction logs will then get replayed locally causing your local store to be repopulated from what’s in iCloud.
 
+## `parseLogs`
+
+The (`parseLogs`)[parseLogs] bash script allows you to analyse the output of Apple's verbose ubiquity log output and give you some feedback on it.  It is in a very young stage, but is aimed at aiding with debugging any iCloud related sync issues.
+
+To use the script, just run it (with PWD set to the location of the script or after copying its `bashlib` dependency into `PATH`), feeding it the ubiquity log over `STDIN`:
+
+    ./parseLogs < myapp.logs
+
+To make it more verbose, add `-v` options.  Verbose output will show unprocessed log lines as well.  It is the aim of this script to process all log lines output by Apple's ubiquity logging.  You can contribute either by amending the script or the (`LOGS`)[LOGS] summary file.
+
 # Under The Hood
 
 `UbiquityStoreManager` tries hard to hide all the details from you, maintaining the persistentStoreCoordinator for you.  If you're interested in what it does and how things work, read on.

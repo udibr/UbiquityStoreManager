@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+source bashlib
+
+while getopts :v opt; do
+    case "$opt" in
+        v) (( ++_logVerbosity )) ;;
+    esac
+done
+
+# Parse the log's lines into blocks of log statements (=logLines)
+logLines=() logLine=
+while read -r line; do
+    line=${line%$'\r'} # DOS-to-UNIX
+
+    [[ $line = [[:digit:]][[:digit:]][[:digit:]][[:digit:]]-[[:digit:]][[:digit:]]-[[:digit:]][[:digit:]]' '[[:digit:]][[:digit:]]:[[:digit:]][[:digit:]]:[[:digit:]][[:digit:]].[[:digit:]][[:digit:]][[:digit:]]' '* ]] && {
+        [[ $logLine ]] && logLines+=("${logLine%$'\n'}") logLine=
+    }
+    logLine+=$line$'\n'
+
+done
+
+# Evaluate the log lines.
+for logLine in "${logLines[@]}"; do
+    trc "$logLine"
+
+    if [[ $logLine != *'CoreData: Ubiquity:'* ]]; then
+        continue
+
+
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsExporter'*'exporting '@(inserted|updated|deleted)' objects:'* ]]; then
+        inserted=() updated=() deleted=() object=
+        while read -r line; do
+            if [[ $line = *'exporting inserted objects'* ]]; then
+                mode=inserted
+                trc 'mode %s' "$mode"
+            elif [[ $line = *'exporting updated objects'* ]]; then
+                mode=updated
+                trc 'mode %s' "$mode"
+            elif [[ $line = *'exporting deleted objects'* ]]; then
+                mode=deleted
+                trc 'mode %s' "$mode"
+            elif [[ $line = '})'?(,) ]]; then
+                object=${object% }
+                eval "$(printf '%q+=(%q)' "$mode" "$object")"
+                trc 'mode end %s: object=%s' "$mode" "$object"
+            elif [[ $line =~ ^'<'.*/([^/]*/[^/]*)'> ; data: {' ]]; then
+                object=${BASH_REMATCH[1]}": "
+                trc 'object=<%s>' "$object"
+            else
+                line=${line//'"0x'+([[:alnum:]])' <x-coredata://'+([^\/])'/'/'"<'}
+                object+="$line "
+                trc 'object+=<%s>' "$line"
+            fi
+        done <<< "$logLine"
+
+        inf 'Exporting %d changes saved to store:' "$(( ${#inserted[@]} + ${#updated[@]} + ${#deleted[@]} ))"
+        for object in "${inserted[@]}"; do
+            logColor=$green inf "+ %s" "$object"
+        done
+        for object in "${updated[@]}"; do
+            logColor=$blue inf "* %s" "$object"
+        done
+        for object in "${deleted[@]}"; do
+            logColor=$red inf "- %s" "$object"
+        done
+
+
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsExporter: '*'Successfully wrote transaction log:'* ]]; then
+        log=? transaction=?
+        while read -r line; do
+            if [[ $line = 'transactionLogLocation: '* ]]; then
+                log=${line##*/}
+            elif [[ $line = 'transactionNumber: '* ]]; then
+                transaction=${line##* }
+            fi
+        done <<< "$logLine"
+
+        inf 'Wrote transaction %d to log: %s' "$transaction" "$log"
+
+
+    elif [[ $logLine = *'CoreData: Ubiquity:  Got final value for relationship:'* ]]; then
+        relationship=? value=?
+        {
+            read relationship
+            relationship=${relationship##*relationship: }
+
+            while read -r line; do
+                [[ $line = 'Object: <'* ]] && break
+                value+="$line "
+            done
+
+            [[ $value != '?' ]] && value=${value#?}
+            value=${value% }
+        } <<< "$logLine"
+
+        inf 'Relationship %s => %s' "$relationship" "$value"
+
+
+    else
+        firstLogLine=${logLine%%$'\n'*} firstLogLine=${firstLogLine#*] }
+        dbg -- "$firstLogLine [...]"
+    fi
+
+done
