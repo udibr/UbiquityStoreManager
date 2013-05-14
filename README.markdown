@@ -124,6 +124,8 @@ Many of these methods take a `localOnly` parameter.  Set it to `YES` if you donâ
 
 The [`parseLogs`](parseLogs) bash script allows you to analyse the output of Apple's verbose ubiquity log output and give you some feedback on it.  It is in a very young stage, but is aimed at aiding with debugging any iCloud related sync issues.
 
+![parseLogs screenshot](http://stuff.lhunath.com/shots/shot.1368550601.png)
+
 To use the script, just run it (with PWD set to the location of the script or after copying its `bashlib` dependency into `PATH`), feeding it the ubiquity log over `STDIN`:
 
     ./parseLogs < myapp.logs
