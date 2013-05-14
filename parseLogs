@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 source bashlib
 
-while getopts :v opt; do
+while getopts :vu opt; do
     case "$opt" in
         v) (( ++_logVerbosity )) ;;
+        u) unhandled=1 ;;
     esac
 done
+
+timePattern='[[:digit:]][[:digit:]][[:digit:]][[:digit:]]-[[:digit:]][[:digit:]]-[[:digit:]][[:digit:]] [[:digit:]][[:digit:]]:[[:digit:]][[:digit:]]:[[:digit:]][[:digit:]][:.][[:digit:]][[:digit:]][[:digit:]]'
 
 # Parse the log's lines into blocks of log statements (=logLines)
 logLines=() logLine=
 while read -r line; do
     line=${line%$'\r'} # DOS-to-UNIX
 
-    [[ $line = [[:digit:]][[:digit:]][[:digit:]][[:digit:]]-[[:digit:]][[:digit:]]-[[:digit:]][[:digit:]]' '[[:digit:]][[:digit:]]:[[:digit:]][[:digit:]]:[[:digit:]][[:digit:]].[[:digit:]][[:digit:]][[:digit:]]' '* ]] && {
+    [[ $line =~ ^$timePattern ]] && {
         [[ $logLine ]] && logLines+=("${logLine%$'\n'}") logLine=
     }
     logLine+=$line$'\n'
@@ -23,8 +26,16 @@ done
 for logLine in "${logLines[@]}"; do
     trc "$logLine"
 
+    time=0
+    [[ $logLine =~ ^($timePattern) ]] && time=$(totime "${BASH_REMATCH[1]}")
+    (( time == 0 || time - lastTime > 2000 )) && printf %s "$bold$black" && hr && printf %s "$reset"
+    lastTime=$time
+
     if [[ $logLine != *'CoreData: Ubiquity:'* ]]; then
-        continue
+        [[ $logLine ]] || continue
+        firstLogLine=${logLine%%$'\n'*} firstLogLine=${firstLogLine#*] }
+        [[ ${logLine#*$firstLogLine} ]] && firstLogLine+=" [...]"
+        inf -- "$firstLogLine"
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsExporter'*'exporting '@(inserted|updated|deleted)' objects:'* ]]; then
@@ -96,9 +107,58 @@ for logLine in "${logLines[@]}"; do
         inf 'Relationship %s => %s' "$relationship" "$value"
 
 
-    else
+        # Messages with no useful content.
+    elif [[ $logLine = *'CoreData: Ubiquity:  Initializing stack'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Setting up metadataMOC for stack:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Stack Changes:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Added transaction entries to cache'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Path: '*' is a ubiquity root url.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Truncated path: '*' is a ubiquity root url.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Got notification that store is about to commit:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Exporter considering response to save:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Exporter:'*'Will respond.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  '*'Got change notification for url:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Coordinated read finished for ubiquity root url:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityPeerReceipt:'*': Successfully wrote to file.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Checking peer file upload:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityBaseline:'*'Successfully created staging directory:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityBaseline:'*'Successfully removed contents of staging area.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Beginning metadata recovery for store:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Metadata recovery for store:'*'Creating new store metadata.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Moving on to recreating the peer ranges.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Finished creating new peer ranges, moving to knowledge vector, peer states, and transaction entries.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Fetched knowledge vector:'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Finished.'* ]]; then
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquitySetupAssistant:'*'Successfully recovered metadata'* ]]; then
+        continue
+
+
+    elif (( unhandled )); then
         firstLogLine=${logLine%%$'\n'*} firstLogLine=${firstLogLine#*] }
-        dbg -- "$firstLogLine [...]"
+        [[ ${logLine#*$firstLogLine} ]] && firstLogLine+=" [...]"
+        inf -- "$firstLogLine"
+        #inf -- "$logLine"
     fi
 
 done

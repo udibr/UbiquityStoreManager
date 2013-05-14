@@ -196,6 +196,7 @@ runner=(     '> >'           \
     show=$(     tput cnorm  || tput ve      ) # Show cursor
     save=$(     tput sc                     ) # Save cursor
     load=$(     tput rc                     ) # Load cursor
+    dim=$(      tput dim    || tput mh      ) # Start dim
     bold=$(     tput bold   || tput md      ) # Start bold
     stout=$(    tput smso   || tput so      ) # Start stand-out
     estout=$(   tput rmso   || tput se      ) # End stand-out
@@ -320,6 +321,33 @@ min() {
   for n
   do (( n < min )) && min=$n; done
   printf %d "$min"
+} # _____________________________________________________________________
+
+
+
+#  ______________________________________________________________________
+# |__ totime ____________________________________________________________|
+#
+#       totime "YYYY-MM-DD HH:MM:SS.mmm"...
+#
+# Outputs the number of milliseconds in the given date string(s).
+#
+# When multiple date string arguments are given, multiple time strings are output, one per line.
+#
+# The fields should be in the above defined order.  The delimitor between the fields may be any one of [ -:.].
+# If a date string does not follow the defined format, the result is undefined.
+#
+# Note that this function uses a very simplistic conversion formula which does not take any special calendar
+# convenions into account.  It assumes there are 12 months in evert year, 31 days in every month, 24 hours
+# in every day, 60 minutes in every hour, 60 seconds in every minute and 1000 milliseconds in every second.
+#
+totime() {
+  local arg time year month day hour minute second milli
+  for arg; do
+    IFS=' -:.' read year month day hour minute second milli <<< "$arg" &&
+        (( time = (((((((((((10#$year * 12) + 10#$month) * 31) + 10#$day) * 24) + 10#$hour) * 60) + 10#$minute) * 60) + 10#$second) * 1000) + 10#$milli )) &&
+        printf '%d\n' "$time"
+    done
 } # _____________________________________________________________________
 
 

@@ -126,7 +126,7 @@ The [`parseLogs`](parseLogs) bash script allows you to analyse the output of App
 
 ![parseLogs screenshot](http://stuff.lhunath.com/shots/shot.1368550601.png)
 
-To use the script, just run it (with PWD set to the location of the script or after copying its `bashlib` dependency into `PATH`), feeding it the ubiquity log over `STDIN`:
+To use the script, just run it (while in the directory of the script or after copying its `bashlib` dependency into `PATH`), feeding it the ubiquity log over `STDIN`:
 
     ./parseLogs < myapp.logs
 
