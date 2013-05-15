@@ -35,7 +35,8 @@ for logLine in "${logLines[@]}"; do
         [[ $logLine ]] || continue
         firstLogLine=${logLine%%$'\n'*} firstLogLine=${firstLogLine#*] }
         [[ ${logLine#*$firstLogLine} ]] && firstLogLine+=" [...]"
-        inf -- "$firstLogLine"
+        [[ $firstLogLine = 'UbiquityStoreManager: '* ]] && app=${firstLogLine%%: *} firstLogLine=${firstLogLine#*: } || app='APP'
+        inf -- "[$app] $firstLogLine"
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsExporter'*'exporting '@(inserted|updated|deleted)' objects:'* ]]; then
@@ -65,7 +66,7 @@ for logLine in "${logLines[@]}"; do
             fi
         done <<< "$logLine"
 
-        inf 'Exporting %d changes saved to store:' "$(( ${#inserted[@]} + ${#updated[@]} + ${#deleted[@]} ))"
+        inf '[iCloud] Exporting %d changes saved to store:' "$(( ${#inserted[@]} + ${#updated[@]} + ${#deleted[@]} ))"
         for object in "${inserted[@]}"; do
             logColor=$green inf "+ %s" "$object"
         done
@@ -88,7 +89,7 @@ for logLine in "${logLines[@]}"; do
             fi
         done <<< "$logLine"
 
-        inf 'Wrote transaction %d to log: %s' "$transaction" "$log"
+        inf '[iCloud] Wrote transaction %d to log: %s' "$transaction" "$log"
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  Got final value for relationship:'* ]]; then
@@ -107,7 +108,7 @@ for logLine in "${logLines[@]}"; do
             value=${value% }
         } <<< "$logLine"
 
-        inf 'Relationship %s => %s' "$relationship" "$value"
+        inf '[iCloud] Relationship %s => %s' "$relationship" "$value"
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityBaselineRollResponseOperation:'*'Encountered an error while trying to respond to the roll of baseline:'* ]]; then
@@ -121,12 +122,12 @@ for logLine in "${logLines[@]}"; do
             }
         done <<< "$logLine"
 
-        wrn 'Baseline roll failed: %s, %s' "$domain" "$code"
+        wrn '[iCloud] Baseline roll failed: %s, %s' "$domain" "$code"
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Scheduling baseline recovery operation on behalf of:'* ]]; then
         # importer ubiquityRootLocation localPeerID rollOperation:(localPeerID storeName modelVersionHash ubiquityRootLocation)
-        wrn 'Scheduling baseline recovery.'
+        wrn '[iCloud] Scheduling baseline recovery.'
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*"Can't process log with score: "*') after log with score:'* ]]; then
@@ -134,14 +135,14 @@ for logLine in "${logLines[@]}"; do
         failScore=? causeScore=? reason=?
         while read -r line; do
             [[ $line = "Can't process log"* ]] && {
-                failScore=${scoreInfo##*process log with score: <*: } failScore="<${failScore%)*})"
-                causeScore=${scoreInfo##*after log with score: <*: } causeScore="<${causeScore%)*})"
+                failScore=${line##*process log with score: <*([^:]): } failScore="<${failScore%%)*})"
+                causeScore=${line##*after log with score: <*([^:]): } causeScore="<${causeScore%%)*})"
                 read reason
                 break
             }
         done <<< "$logLine"
 
-        wrn 'Not processing %s after %s: %s' "$failScore" "$causeScore" "$reason"
+        wrn '[iCloud] Not processing KV %s after KV %s: %s' "$failScore" "$causeScore" "$reason"
 
 
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Skipping incompatible operation (<PFUbiquityKnowledgeVector:'* ]]; then
@@ -157,10 +158,55 @@ for logLine in "${logLines[@]}"; do
             fi
         done <<< "$logLine"
 
-        wrn 'Not processing %s after %s: %s' "$failScore" "$causeScore" "$reason"
+        wrn '[iCloud] Skipping KV %s, from log %s, transaction: %d' "$score" "$log" "$transaction"
 
 
-        # Messages with no useful content.
+    elif [[ $logLine = *'CoreData: Ubiquity:  Changes applied for transaction log content, managed object context changes:'* ]]; then
+        # objects
+        inserted=() updated=() deleted=() object=
+        while read -r line; do
+            if [[ $line = 'inserted: {('* ]]; then
+                mode=inserted
+            elif [[ $line = 'updated: {('* ]]; then
+                mode=updated
+            elif [[ $line = 'deleted: {('* ]]; then
+                mode=deleted
+            elif [[ $line = '})'?(,) ]]; then
+                object=${object% }
+                eval "$(printf '%q+=(%q)' "$mode" "$object")"
+            elif [[ $line =~ ^'<'.*/([^/]*/[^/]*)'> ; data: {' ]]; then
+                object=${BASH_REMATCH[1]}": "
+            else
+                line=${line//'"0x'+([[:alnum:]])' <x-coredata://'+([^\/])'/'/'"<'}
+                object+="$line "
+            fi
+        done <<< "$logLine"
+
+        inf '[iCloud] Imported %d changes into store:' "$(( ${#inserted[@]} + ${#updated[@]} + ${#deleted[@]} ))"
+        for object in "${inserted[@]}"; do
+            logColor=$green inf "+ %s" "$object"
+        done
+        for object in "${updated[@]}"; do
+            logColor=$blue inf "* %s" "$object"
+        done
+        for object in "${deleted[@]}"; do
+            logColor=$red inf "- %s" "$object"
+        done
+
+
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Skipping log because it has already been imported into the local store:'* ]]; then
+        # importer ubiquityRootLocation localPeerID importOperation localPeerID location
+        log=?
+        while read -r line; do
+            if [[ $line = *'<PFUbiquityLocation: '* ]]; then
+                log=${line##*/}
+            fi
+        done <<< "$logLine"
+
+        inf '[iCloud] Already imported: %s' "$log"
+
+
+    # Messages with no useful content.
     elif [[ $logLine = *'CoreData: Ubiquity:  Initializing stack'* ]]; then
         # stack metadataEntry metadataStoreFileLocation psc store filePresenter
         continue
@@ -169,6 +215,12 @@ for logLine in "${logLines[@]}"; do
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Stack Changes:'* ]]; then
         # peers transactionEntry:(actingPeer globalIDStr knowledgeVectorString localIDStr storeMetadata transactionDate transactionLogFilename transactionNumber transactionTypeNum) storeMetadata:(modelVersionHashString peerStates primaryKeyRanges storeIdentifier storeOptionsBinaryPlistData storeType storeURLString transactionEntries:(x-coredata://PFUbiquityTransactionEntry) ubiquityName ubiquityRelativePath ubiquityRootURLString)
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  About to save stack updates, metadata moc changes:'* ]]; then
+        # peerStates peers storeMetadata
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  About to save stack: <_PFUbiquityStack:'* ]]; then
+        # stack localPeerID ubiquityRootURL metadataContainerURL
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Added transaction entries to cache' ]]; then
         # -
@@ -200,11 +252,35 @@ for logLine in "${logLines[@]}"; do
     elif [[ $logLine = *'CoreData: Ubiquity:  Checking peer file upload:'* ]]; then
         # receipt permanentLocation safeLocation currentLocation kv
         continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Successfully initialized baseline: <PFUbiquityBaseline:'* ]]; then
+        # baseline permanentLocation safeLocation currentLocation storeName modelVersionHash baselineArchiveLocation
+        continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityBaseline:'*'Successfully created staging directory:'* ]]; then
         # baseline permanentLocation safeLocation currentLocation storeName modelVersionHash baselineArchiveLocation url
         continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityBaseline:'*'Successfully copied store to staging directory:'* ]]; then
+        # baseline permanentLocation safeLocation currentLocation storeName modelVersionHash baselineArchiveLocation store-in-staging
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Got more than one path component for subpath: '*' of baseline staging directory:'* ]]; then
+        # subpath staging
+        continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityBaseline:'*'Successfully removed contents of staging area.'* ]]; then
         # baseline permanentLocation safeLocation currentLocation storeName modelVersionHash baselineArchiveLocation
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Baseline exists in the cloud, will evaluate other criteria to see if a new one can be rolled.' ]]; then
+        # -
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Asked if rolling the baseline is possible, but not enough transactions have occurred. Only '*' local transactions have occurred of the required 100.' ]]; then
+        # transactions-since-roll
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Total bytes:'* ]]; then
+        # bytes-of-logs
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Store bytes: '*' at URL:'* ]]; then
+        # bytes-of-store url
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Not enough log bytes to roll:'* ]]; then
+        # bytes-of-logs
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Beginning metadata recovery for store:'* ]]; then
         # store
@@ -239,14 +315,8 @@ for logLine in "${logLines[@]}"; do
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquitySetupAssistant:'*"Didn't get a switchboard entry back after trying to register store:"* ]]; then
         # assistant store psc
         continue
-    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Scheduling root scan'* ]]; then
-        # importer ubiquityRootLocation localPeerID scan(x,y)
-        continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Starting scan of location:'* ]]; then
         # location
-        continue
-    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'adding root scan: <PFUbiquityImportScanOperation: '*'> to queue:'* ]]; then
-        # importer ubiquityRootLocation localPeerID scanOperation operationQueue
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityImportScanOperation:'*'got subpaths of root location: ('* ]]; then
         # importOperation paths
@@ -262,9 +332,6 @@ for logLine in "${logLines[@]}"; do
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Finished scan of root location'* ]]; then
         # ? location(finished, pending, peers)
-        continue
-    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Registering for application resumed notification.'* ]]; then
-        # importer ubiquityRootLocation localPeerID
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Post store setup succeded.'* ]]; then
         # store
@@ -302,13 +369,64 @@ for logLine in "${logLines[@]}"; do
     elif [[ $logLine = *'CoreData: Ubiquity:  Can adopt: 0 replace: 0'*'kv:'* ]]; then
         # kv
         continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Scheduling root scan'* ]]; then
+        # importer ubiquityRootLocation localPeerID scan(x,y)
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'adding root scan: <PFUbiquityImportScanOperation: '*'> to queue:'* ]]; then
+        # importer ubiquityRootLocation localPeerID scanOperation operationQueue
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Registering for application resumed notification.'* ]]; then
+        # importer ubiquityRootLocation localPeerID
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'importing operations:'* ]]; then
+        # importer ubiquityRootLocation localPeerID importOperations
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Finished scheduling logs with context:'* ]]; then
+        # importer ubiquityRootLocation localPeerID importContext pendingLogs scheduledLogs failedLogs ignoredlogs encounteredErrors
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Will reschedule pending logs:'* ]]; then
+        # importer ubiquityRootLocation localPeerID pendingLogs failedLogs
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'will process operation:'* ]]; then
+        # importer ubiquityRootLocation localPeerID importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Got set of persistent store coordinators for store named:'* ]]; then
+        # importer ubiquityRootLocation localPeerID importOperation localPeerID storeName pscs
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Wrote pending entries to disk after imports finished.' ]]; then
+        # importer ubiquityRootLocation localPeerID importOperation localPeerID
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordImportOperation:'*'Beginning parse of log file:'* ]]; then
+        # importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber PFUbiquityTransactionLog transactionLogLocation transactionNumber
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordImportOperation:'*'Cache KV matches initial KV'* ]]; then
+        # importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordImportOperation:'*'Successfully prefetched managed objects.' ]]; then
+        # importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordImportOperation:'*'successfully applied changes for object with global id:'* ]]; then
+        # importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber globalId object:remotePeer
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordImportOperation:'*'Successfully wrote changes.'* ]]; then
+        # importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordImportOperation:'*'Successfully wrote metadata changes.'* ]]; then
+        # importOperation localPeerID logScore transactionLog transactionLogLocation transactionNumber
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  About to apply changes from log contents.' ]]; then
+        # -
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Posting import notification:'* ]]; then
+        # notification objects psc
+        continue
 
 
     elif (( unhandled )); then
         firstLogLine=${logLine%%$'\n'*} firstLogLine=${firstLogLine#*] }
         [[ ${logLine#*$firstLogLine} ]] && firstLogLine+=" [...]"
-        inf -- "$firstLogLine"
-        #inf -- "$logLine"
+        wrn -- '[unhandled] %s' "$firstLogLine"
+        #wrn -- "$logLine"
     fi
 
 done
