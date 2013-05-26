@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 source bashlib
 
-while getopts :vu opt; do
+unhandled=1
+while getopts :vU opt; do
     case "$opt" in
+        h) showHelp parseLogs 'Reformats verbose ubiquity log output to make it easier to understand.' 'Maarten Billemont' \
+            -v 'Increase output verbosity.' \
+            -U 'Hide warnings about unhandled ubiquity log output.' ;;
         v) (( ++_logVerbosity )) ;;
-        u) unhandled=1 ;;
+        U) unhandled=0 ;;
     esac
 done
 
@@ -161,6 +165,18 @@ for logLine in "${logLines[@]}"; do
         wrn '[iCloud] Skipping KV %s, from log %s, transaction: %d' "$score" "$log" "$transaction"
 
 
+    elif [[ $logLine = *'CoreData: Ubiquity:  Got notification that store is about to commit:'* ]]; then
+        # notification store saveRequest transactionType transactionNumber
+        transaction=?
+        while read -r line; do
+            if [[ $line = 'transactionNumber: '* ]]; then
+                transaction=${line##* }
+            fi
+        done <<< "$logLine"
+
+        inf '[iCloud] Store committing transaction: %d' "$transaction"
+
+
     elif [[ $logLine = *'CoreData: Ubiquity:  Changes applied for transaction log content, managed object context changes:'* ]]; then
         # objects
         inserted=() updated=() deleted=() object=
@@ -207,11 +223,14 @@ for logLine in "${logLines[@]}"; do
 
 
     # Messages with no useful content.
+    elif [[ $logLine = *'CoreData: Ubiquity:  Successfully loaded receipt: <PFUbiquityPeerReceipt:'* ]]; then
+        # permanentLocation safeLocation currentLocation kv
+        continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Initializing stack'* ]]; then
         # stack metadataEntry metadataStoreFileLocation psc store filePresenter
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Setting up metadataMOC for stack:'* ]]; then
-        # stack localPeerID ubiquityRootURL metadataContainerURL 
+        # stack localPeerID ubiquityRootURL metadataContainerURL
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Stack Changes:'* ]]; then
         # peers transactionEntry:(actingPeer globalIDStr knowledgeVectorString localIDStr storeMetadata transactionDate transactionLogFilename transactionNumber transactionTypeNum) storeMetadata:(modelVersionHashString peerStates primaryKeyRanges storeIdentifier storeOptionsBinaryPlistData storeType storeURLString transactionEntries:(x-coredata://PFUbiquityTransactionEntry) ubiquityName ubiquityRelativePath ubiquityRootURLString)
@@ -231,11 +250,8 @@ for logLine in "${logLines[@]}"; do
     elif [[ $logLine = *'CoreData: Ubiquity:  Truncated path: '*' is a ubiquity root url.'*'Matches:'* ]]; then
         # path*2
         continue
-    elif [[ $logLine = *'CoreData: Ubiquity:  Got notification that store is about to commit:'* ]]; then
-        # notification store saveRequest transactionType transactionNumber
-        continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Exporter considering response to save:'* ]]; then
-        # exporter localPeerID ubiquityRootLocation tempMoveTimer lastTransactionDate store storeOptions 
+        # exporter localPeerID ubiquityRootLocation tempMoveTimer lastTransactionDate store storeOptions
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  Exporter:'*'Will respond.'* ]]; then
         # exporter localPeerID ubiquityRootLocation tempMoveTimer lastTransactionDate
@@ -292,13 +308,13 @@ for logLine in "${logLines[@]}"; do
         # medic store metadata:(x-coredata:///PFUbiquityStoreMetadata modelVersionHashString peerStates primaryKeyRanges storeIdentifier storeOptionsBinaryPlistData storeType storeURLString transactionEntries ubiquityName ubiquityRelativePath ubiquityRootURLString)
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Finished creating new peer ranges, moving to knowledge vector, peer states, and transaction entries.'* ]]; then
-        # medic store 
+        # medic store
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Fetched knowledge vector:'* ]]; then
         # medic store kv
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquityStoreMetadataMedic:'*'Finished.'* ]]; then
-        # medic store 
+        # medic store
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <PFUbiquitySetupAssistant:'*'Successfully recovered metadata'* ]]; then
         # assistant
@@ -377,6 +393,9 @@ for logLine in "${logLines[@]}"; do
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'Registering for application resumed notification.'* ]]; then
         # importer ubiquityRootLocation localPeerID
+        continue
+    elif [[ $logLine = *'CoreData: Ubiquity:  Got empty knowledge vector from string:' ]]; then
+        # -
         continue
     elif [[ $logLine = *'CoreData: Ubiquity:  <_PFUbiquityRecordsImporter:'*'importing operations:'* ]]; then
         # importer ubiquityRootLocation localPeerID importOperations
