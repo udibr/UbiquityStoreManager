@@ -286,6 +286,15 @@ typedef enum {
 @property(nonatomic, assign) UbiquityStoreMigrationStrategy migrationStrategy;
 
 /**
+ * Indicates whether iCloud is available for the current user.
+ *
+ * If iCloud is not available, the user probably hasn't yet configured their Apple ID on their account.
+ * 
+ * This property is Key-Value Observing compatible: observing this key will give you updates on the current user's iCloud availability.
+ */
+@property(nonatomic, readonly) BOOL cloudAvailable;
+
+/**
  * Indicates whether the iCloud store or the local store is in use.
  *
  * Changing this property will cause a reload of the active store.

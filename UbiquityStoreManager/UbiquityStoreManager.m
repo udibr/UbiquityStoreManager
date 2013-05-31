@@ -88,6 +88,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 @property(nonatomic, strong) USMStoreFilePresenter *storeFilePresenter;
 @property(nonatomic, strong) USMStoreUUIDPresenter *storeUUIDPresenter;
 @property(nonatomic, strong) USMCorruptedUUIDPresenter *corruptedUUIDPresenter;
+@property(nonatomic, assign) BOOL cloudAvailable;
 @end
 
 @implementation UbiquityStoreManager {
@@ -129,6 +130,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
     // Private vars.
     _currentIdentityToken = [[NSFileManager defaultManager] ubiquityIdentityToken];
+    _cloudAvailable = (_currentIdentityToken != nil);
     _migrationStrategy = UbiquityStoreMigrationStrategyCopyEntities;
     _persistentStorageQueue = [NSOperationQueue new];
     _persistentStorageQueue.name = [NSString stringWithFormat:@"%@PersistenceQueue", NSStringFromClass( [self class] )];
@@ -1412,6 +1414,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     if (![self.currentIdentityToken isEqual:newIdentityToken]) {
         [self log:@"Identity token changed: %@ -> %@", self.currentIdentityToken, newIdentityToken];
         self.currentIdentityToken = newIdentityToken;
+        self.cloudAvailable = (self.currentIdentityToken != nil);
     }
 
     // If the cloud store was active, reload it.
