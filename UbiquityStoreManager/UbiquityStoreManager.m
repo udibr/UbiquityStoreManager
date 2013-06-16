@@ -638,7 +638,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 - (void)loadStoreAtURL:(NSURL *)targetStoreURL withOptions:(NSMutableDictionary *)targetStoreOptions
    migratingStoreAtURL:(NSURL *)migrationStoreURL withOptions:(NSMutableDictionary *)migrationStoreOptions
          usingStrategy:(UbiquityStoreMigrationStrategy)migrationStrategy
-                 cause:(UbiquityStoreErrorCause *)cause context:(id *)context {
+                 cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context {
 
     NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
     @"Active store should only be changed from the persistence queue.");
@@ -760,7 +760,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (BOOL)copyMigrateStore:(NSURL *)migrationStoreURL withOptions:(NSDictionary *)migrationStoreOptions
                  toStore:(NSURL *)targetStoreURL withOptions:(NSDictionary *)targetStoreOptions
-                   error:(NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(id *)context {
+                   error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context {
 
     NSError *error = nil;
     __block NSError *error_ = nil;
