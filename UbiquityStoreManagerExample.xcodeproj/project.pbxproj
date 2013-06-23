@@ -24,7 +24,8 @@
 		5B4B127215227DFE00153613 /* Event.m in Sources */ = {isa = PBXBuildFile; fileRef = 5B4B127115227DFE00153613 /* Event.m */; };
 		93D3906BB1F143AA15A9BDB9 /* JRSwizzle.m in Sources */ = {isa = PBXBuildFile; fileRef = 93D3982680A3617FB669BBC5 /* JRSwizzle.m */; };
 		93D39247AA48A93AE9BE359A /* NSError+UbiquityStoreManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 93D39F19900BD420A6E9B72E /* NSError+UbiquityStoreManager.m */; };
-		DA79AA3D1558608500BAA07A /* UbiquityStoreManagerExample.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = DA79AA3B1558608500BAA07A /* UbiquityStoreManagerExample.xcdatamodeld */; };
+		DA0CA5AA17773C7B0093382E /* NSURL+UbiquityStoreManager.m in Sources */ = {isa = PBXBuildFile; fileRef = DA0CA5A917773C7B0093382E /* NSURL+UbiquityStoreManager.m */; };
+		DA0CA5AD17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = DA0CA5AB17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodeld */; };
 		DA79AA411558613F00BAA07A /* UbiquityStoreManager.m in Sources */ = {isa = PBXBuildFile; fileRef = DA79AA401558613F00BAA07A /* UbiquityStoreManager.m */; };
 /* End PBXBuildFile section */
 
@@ -56,9 +57,11 @@
 		93D39827ACFB3A3A3E1CEF4C /* JRSwizzle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JRSwizzle.h; sourceTree = "<group>"; };
 		93D39B7366D5AD8A2FEFD7F1 /* NSError+UbiquityStoreManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSError+UbiquityStoreManager.h"; sourceTree = "<group>"; };
 		93D39F19900BD420A6E9B72E /* NSError+UbiquityStoreManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSError+UbiquityStoreManager.m"; sourceTree = "<group>"; };
+		DA0CA5A817773C7B0093382E /* NSURL+UbiquityStoreManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURL+UbiquityStoreManager.h"; sourceTree = "<group>"; };
+		DA0CA5A917773C7B0093382E /* NSURL+UbiquityStoreManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURL+UbiquityStoreManager.m"; sourceTree = "<group>"; };
+		DA0CA5AC17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = UbiquityStoreManagerExample.xcdatamodel; sourceTree = "<group>"; };
 		DA79AA3115585EBE00BAA07A /* UbiquityStoreManagerExample-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.info; path = "UbiquityStoreManagerExample-Info.plist"; sourceTree = "<group>"; };
 		DA79AA3215585EBE00BAA07A /* UbiquityStoreManagerExample-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "UbiquityStoreManagerExample-Prefix.pch"; sourceTree = "<group>"; };
-		DA79AA3C1558608500BAA07A /* UbiquityStoreManager.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = UbiquityStoreManager.xcdatamodel; sourceTree = "<group>"; };
 		DA79AA3F1558613F00BAA07A /* UbiquityStoreManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UbiquityStoreManager.h; sourceTree = "<group>"; };
 		DA79AA401558613F00BAA07A /* UbiquityStoreManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = UbiquityStoreManager.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -112,7 +115,7 @@
 		5B4B122E15227C6D00153613 /* UbiquityStoreManagerExample */ = {
 			isa = PBXGroup;
 			children = (
-				DA79AA3B1558608500BAA07A /* UbiquityStoreManagerExample.xcdatamodeld */,
+				DA0CA5AB17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodeld */,
 				5B5E838C152BAB96009C1991 /* UbiquityStoreManagerExample.entitlements */,
 				5B4B123715227C6E00153613 /* AppDelegate.h */,
 				5B4B123815227C6E00153613 /* AppDelegate.m */,
@@ -160,6 +163,8 @@
 				DA79AA401558613F00BAA07A /* UbiquityStoreManager.m */,
 				93D39F19900BD420A6E9B72E /* NSError+UbiquityStoreManager.m */,
 				93D39B7366D5AD8A2FEFD7F1 /* NSError+UbiquityStoreManager.h */,
+				DA0CA5A817773C7B0093382E /* NSURL+UbiquityStoreManager.h */,
+				DA0CA5A917773C7B0093382E /* NSURL+UbiquityStoreManager.m */,
 			);
 			path = UbiquityStoreManager;
 			sourceTree = "<group>";
@@ -236,10 +241,11 @@
 				5B4B124215227C6E00153613 /* DetailViewController.m in Sources */,
 				5B4B126F15227DFE00153613 /* User.m in Sources */,
 				5B4B127215227DFE00153613 /* Event.m in Sources */,
-				DA79AA3D1558608500BAA07A /* UbiquityStoreManagerExample.xcdatamodeld in Sources */,
 				DA79AA411558613F00BAA07A /* UbiquityStoreManager.m in Sources */,
 				93D39247AA48A93AE9BE359A /* NSError+UbiquityStoreManager.m in Sources */,
 				93D3906BB1F143AA15A9BDB9 /* JRSwizzle.m in Sources */,
+				DA0CA5AA17773C7B0093382E /* NSURL+UbiquityStoreManager.m in Sources */,
+				DA0CA5AD17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodeld in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,12 +393,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCVersionGroup section */
-		DA79AA3B1558608500BAA07A /* UbiquityStoreManagerExample.xcdatamodeld */ = {
+		DA0CA5AB17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodeld */ = {
 			isa = XCVersionGroup;
 			children = (
-				DA79AA3C1558608500BAA07A /* UbiquityStoreManager.xcdatamodel */,
+				DA0CA5AC17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodel */,
 			);
-			currentVersion = DA79AA3C1558608500BAA07A /* UbiquityStoreManager.xcdatamodel */;
+			currentVersion = DA0CA5AC17773ED30093382E /* UbiquityStoreManagerExample.xcdatamodel */;
 			path = UbiquityStoreManagerExample.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;

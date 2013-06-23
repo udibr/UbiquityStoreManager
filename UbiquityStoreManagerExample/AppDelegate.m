@@ -19,7 +19,6 @@
 @property(nonatomic, strong) UIAlertView *handleCloudContentWarningAlert;
 
 @property(nonatomic, strong) UIAlertView *handleLocalStoreAlert;
-- (NSURL *)storeURL;
 @end
 
 
@@ -29,7 +28,6 @@
 
 @synthesize window						= _window;
 @synthesize managedObjectContext		= __managedObjectContext;
-@synthesize managedObjectModel			= __managedObjectModel;
 @synthesize navigationController		= _navigationController;
 @synthesize splitViewController			= _splitViewController;
 @synthesize ubiquityStoreManager;
@@ -43,8 +41,8 @@
     NSLog(@"Starting UbiquityStoreManagerExample on device: %@\n\n", [UIDevice currentDevice].name);
 
     // STEP 1 - Initialize the UbiquityStoreManager
-	ubiquityStoreManager = [[UbiquityStoreManager alloc] initStoreNamed:nil withManagedObjectModel:[self managedObjectModel]
-                                                          localStoreURL:[self storeURL] containerIdentifier:nil additionalStoreOptions:nil
+	ubiquityStoreManager = [[UbiquityStoreManager alloc] initStoreNamed:nil withManagedObjectModel:nil
+                                                          localStoreURL:nil containerIdentifier:nil additionalStoreOptions:nil
                                                                delegate:self];
 	
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
@@ -115,23 +113,6 @@
 			}];
         } 
     }
-}
-
-#pragma mark - Core Data stack
-
-// Returns the managed object model for the application.
-// If the model doesn't already exist, it is created from the application's model.
-- (NSManagedObjectModel *)managedObjectModel {
-    if (__managedObjectModel != nil) {
-        return __managedObjectModel;
-    }
-    NSURL *modelURL = [[NSBundle mainBundle] URLForResource:@"UbiquityStoreManagerExample" withExtension:@"momd"];
-    __managedObjectModel = [[NSManagedObjectModel alloc] initWithContentsOfURL:modelURL];
-    return __managedObjectModel;
-}
-
-- (NSURL *)storeURL {
-	return [[self applicationDocumentsDirectory] URLByAppendingPathComponent:@"Sample.sqlite"];
 }
 
 #pragma mark - Application's Documents directory

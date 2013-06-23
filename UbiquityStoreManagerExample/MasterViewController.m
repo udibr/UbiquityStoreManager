@@ -60,10 +60,9 @@
     // Refetch the data
     self.fetchedResultsController = nil;
     [self fetchedResultsController];
+    [self.tableView reloadData];
     
     if (note) {
-        [self.tableView reloadData];
-        
         // STEP 5b - Display current state of the UbiquityStoreManager
         BOOL enabled = [[AppDelegate appDelegate] ubiquityStoreManager].cloudEnabled;
         [iCloudSwitch setOn:enabled animated:YES];
@@ -82,7 +81,7 @@
 	// Observe the app delegate telling us when it's finished asynchronously setting up the persistent store
     [[NSNotificationCenter defaultCenter] addObserver: self
 											 selector: @selector(reloadFetchedResults:)
-												 name: UbiquityManagedStoreDidChangeNotification
+												 name: USMStoreDidChangeNotification
 											   object: [[AppDelegate appDelegate] ubiquityStoreManager]];
 
 	self.tableView.tableHeaderView = self.tableHeaderView;
