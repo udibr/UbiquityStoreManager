@@ -432,6 +432,6 @@ typedef enum {
  */
 - (BOOL)copyMigrateStore:(NSURL *)migrationStoreURL withOptions:(NSDictionary *)migrationStoreOptions
                  toStore:(NSURL *)targetStoreURL withOptions:(NSDictionary *)targetStoreOptions
-                   error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing __autoreleasing id *)context;
+                   error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context;
 
 @end
