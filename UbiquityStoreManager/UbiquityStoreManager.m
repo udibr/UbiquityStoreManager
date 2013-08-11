@@ -468,6 +468,16 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         [self.storeUUIDPresenter = [[USMStoreUUIDPresenter alloc] initWithURL:[self URLForCloudStoreUUID] delegate:self] start];
         [self.corruptedUUIDPresenter = [[USMCorruptedUUIDPresenter alloc] initWithURL:[self URLForCloudCorruptedUUID] delegate:self] start];
     }
+    @catch (id exception) {
+        NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithCapacity:2];
+        if (exception)
+            [userInfo setObject:[(id<NSObject>)exception description] forKey:NSLocalizedFailureReasonErrorKey];
+        if (error)
+            [userInfo setObject:error forKey:NSUnderlyingErrorKey];
+
+        [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0 userInfo:userInfo]
+              cause:cause = UbiquityStoreErrorCauseOpenActiveStore context:context = exception];
+    }
     @finally {
         BOOL wasExplicitMigration = self.migrationStoreURL != nil;
         self.migrationStoreURL = nil;
@@ -593,6 +603,16 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
                        cause:&cause context:&context];
 
         [self.storeFilePresenter = [[USMStoreFilePresenter alloc] initWithURL:localStoreURL delegate:self] start];
+    }
+    @catch (id exception) {
+        NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithCapacity:2];
+        if (exception)
+            [userInfo setObject:[(id<NSObject>)exception description] forKey:NSLocalizedFailureReasonErrorKey];
+        if (error)
+            [userInfo setObject:error forKey:NSUnderlyingErrorKey];
+
+        [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0 userInfo:userInfo]
+              cause:cause = UbiquityStoreErrorCauseOpenActiveStore context:context = exception];
     }
     @finally {
         BOOL wasExplicitMigration = self.migrationStoreURL != nil;
