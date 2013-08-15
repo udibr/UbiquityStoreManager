@@ -51,10 +51,11 @@
                 // URL is in conflict: its data is present, just needs resolution.
             return YES;
 
-        if (![properties[NSURLUbiquitousItemIsDownloadingKey] boolValue] &&
-            ![[NSFileManager defaultManager] startDownloadingUbiquitousItemAtURL:self error:nil])
-                // Couldn't start downloading URL: resource probably disappeared.
-            return NO;
+        if (![properties[NSURLUbiquitousItemIsDownloadingKey] boolValue]) {
+            NSError *error = nil;
+            if (![[NSFileManager defaultManager] startDownloadingUbiquitousItemAtURL:self error:&error])
+                NSLog(@"Failed downloading ubiquitous content: %@", error);
+        }
 
         [NSThread sleepForTimeInterval:0.1];
     } while (YES);
