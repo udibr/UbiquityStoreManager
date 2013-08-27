@@ -3,37 +3,35 @@
   <head>
     <meta charset='utf-8'>
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
     <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
     <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
     <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
+
     <!--[if lt IE 9]>
     <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
+
     <title>UbiquityStoreManager by lhunath</title>
   </head>
 
   <body>
-    <div id="container">
+    <header>
       <div class="inner">
+        <h1>UbiquityStoreManager</h1>
+        <h2>Solving the iCloud for Core Data problem</h2>
+        <a href="https://github.com/lhunath/UbiquityStoreManager" class="button"><small>View project on</small>GitHub</a>
+      </div>
+    </header>
 
-        <header>
-          <h1>UbiquityStoreManager</h1>
-          <h2>Solving the iCloud for Core Data problem</h2>
-        </header>
+    <div id="content-wrapper">
+      <div class="inner clearfix">
+        <section id="main-content">
+          <h1>
+<a name="about" class="anchor" href="#about"><span class="octicon octicon-link"></span></a>About</h1>
 
-        <section id="downloads" class="clearfix">
-          <a href="https://github.com/lhunath/UbiquityStoreManager/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
-          <a href="https://github.com/lhunath/UbiquityStoreManager/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
-          <a href="https://github.com/lhunath/UbiquityStoreManager" id="view-on-github" class="button"><span>View on GitHub</span></a>
-        </section>
-
-        <hr>
-
-        <section id="main_content">
-          <h1>About</h1>
-
-<p><code>UbiquityStoreManager</code> is a controller that implements <strong>iCloud integration with Core Data</strong> for you.</p>
+<p><code>UbiquityStoreManager</code> is a controller that implements <strong>iCloud integration with Core Data</strong> for you, and takes away all the hardship.</p>
 
 <p>While Apple portrays iCloud integration as trivial, the contrary is certainly true.  Especially for Core Data, there are many caveats, side-effects and undocumented behaviors that need to be handled to get a reliable implementation.</p>
 
@@ -41,7 +39,8 @@
 
 <p>The API has been kept as simple as possible while giving you, the application developer, the hooks you need to get the behavior you want.  Wherever possible, <code>UbiquityStoreManager</code> implements safe and sane default behavior to handle exceptional situations.  These cases are well documented in the API documentation, as well as your ability to plug into the manager and implement your own custom behavior.</p>
 
-<h1>Disclaimer</h1>
+<h1>
+<a name="disclaimer" class="anchor" href="#disclaimer"><span class="octicon octicon-link"></span></a>Disclaimer</h1>
 
 <p>I provide <code>UbiquityStoreManager</code> and its example application to you for free and do not take any responsability for what it may do in your application.</p>
 
@@ -49,7 +48,15 @@
 
 <p><a href="http://www.pledgie.com/campaigns/19629"><img alt="Click here to lend your support to: UbiquityStoreManager and make a donation at www.pledgie.com !" src="http://www.pledgie.com/campaigns/19629.png?skin_name=chrome" border="0"></a></p>
 
-<h1>Getting Started</h1>
+<h1>
+<a name="note-on-ios-7" class="anchor" href="#note-on-ios-7"><span class="octicon octicon-link"></span></a>Note on iOS 7</h1>
+
+<p>Apple has significantly improved their Core Data integration with iCloud in iOS 7.  Applications that wish to benefit from these improvements need to become iOS 7 only.  <code>UbiquityStoreManager</code> currently supports only iOS 6.  It will be updated with support for iOS 7, but will most likely migrate iOS 7 devices over to a separate iOS 7-only data store in order to take advantage of Apple's improvements.  The result is that a user's iOS 6 (or OS X 10.8-) devices will not be able to sync to his iOS 7 (or OS X 10.9+) devices and vice-versa.  We may provide an optional programmatic toggle allowing developers to stick to the current <code>USM</code> implementation across iOS versions allowing users to keep syncing across versions but losing the benefit of Apple's latest improvements.</p>
+
+<p>Watch the project to be notified as soon as the iOS 7 branch appears.  Currently, <code>USM</code> will either work as it did on iOS 6, or it will disable iCloud on the iOS 7 device and fall back to the local store.</p>
+
+<h1>
+<a name="getting-started" class="anchor" href="#getting-started"><span class="octicon octicon-link"></span></a>Getting Started</h1>
 
 <p>To get started with <code>UbiquityStoreManager</code>, all you need to do is instantiate it:</p>
 
@@ -64,12 +71,10 @@
 <p>And then wait in your delegate for the manager to bring up your persistence layer:</p>
 
 <pre><code>- (void)ubiquityStoreManager:(UbiquityStoreManager *)manager willLoadStoreIsCloud:(BOOL)isCloudStore {
-
     self.moc = nil;
 }
 
 - (void)ubiquityStoreManager:(UbiquityStoreManager *)manager didLoadStoreForCoordinator:(NSPersistentStoreCoordinator *)coordinator isCloud:(BOOL)isCloudStore {
-
     self.moc = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
     [moc setPersistentStoreCoordinator:coordinator];
     [moc setMergePolicy:NSMergeByPropertyObjectTrumpMergePolicy];
@@ -85,7 +90,8 @@
 <pre><code>manager.cloudEnabled = YES;
 </code></pre>
 
-<h1>Surely I’m not done yet!</h1>
+<h1>
+<a name="surely-im-not-done-yet" class="anchor" href="#surely-im-not-done-yet"><span class="octicon octicon-link"></span></a>Surely I’m not done yet!</h1>
 
 <p>That depends on how much you want to get involved with what <code>UbiquityStoreManager</code> does internally to handle your store, and how much feedback you want to give your user with regards to what’s going on.</p>
 
@@ -93,7 +99,8 @@
 
 <p>It’s probably also a good idea to update your main <code>moc</code> whenever ubiquity changes are getting imported into your store from other devices.  To do this, simply provide the manager with your <code>moc</code> by returning it from <code>managedObjectContextForUbiquityChangesInManager:</code> and optionally register an observer for <code>UbiquityManagedStoreDidImportChangesNotification</code>.</p>
 
-<h1>What if things go wrong?</h1>
+<h1>
+<a name="what-if-things-go-wrong" class="anchor" href="#what-if-things-go-wrong"><span class="octicon octicon-link"></span></a>What if things go wrong?</h1>
 
 <p>And don’t be fooled: Things do go wrong.  Apple has a few kinks to work out, some of these can cause the cloud store to become irreparably desynced.</p>
 
@@ -109,7 +116,6 @@
 
 <pre><code>- (BOOL)ubiquityStoreManager:(UbiquityStoreManager *)manager
         handleCloudContentCorruptionWithHealthyStore:(BOOL)storeHealthy {
-
     if (![self.cloudAlert isVisible] &amp;&amp; manager.cloudEnabled &amp;&amp; !storeHealthy)
         dispatch_async( dispatch_get_main_queue(), ^{
             self.cloudAlert = [[UIAlertView alloc]
@@ -136,7 +142,8 @@
 
 <p>Unless you want to get into the deep water, <strong><em>you’re done now</em></strong>.  What follows is for brave souls or those seeking for maximum control.</p>
 
-<h1>What else have you got?</h1>
+<h1>
+<a name="what-else-have-you-got" class="anchor" href="#what-else-have-you-got"><span class="octicon octicon-link"></span></a>What else have you got?</h1>
 
 <p>Since this is murky terrain, <code>UbiquityStoreManager</code> tries its best to keep interested delegates informed of what’s going on, and even gives it the ability to intervene in non-standard ways.</p>
 
@@ -163,30 +170,35 @@
 <code>-rebuildCloudContentFromCloudStoreOrLocalStore:</code> — This is where the cloud store rebuild magic happens.  Invoke this method to create a new cloud store and copy your current cloud data into it.</li>
 </ul><p>Many of these methods take a <code>localOnly</code> parameter.  Set it to <code>YES</code> if you don’t want to affect the user’s iCloud data.  The operation will happen on the local device only.  For instance, if you run <code>[manager deleteCloudStoreLocalOnly:YES]</code>, the cloud store on the device will be deleted.  If <code>cloudEnabled</code> is <code>YES</code>, the manager will subsequently re-open the cloud store which will cause a re-download of all iCloud’s transaction logs for the store.  These transaction logs will then get replayed locally causing your local store to be repopulated from what’s in iCloud.</p>
 
-<h2><code>parseLogs</code></h2>
+<h2>
+<a name="parselogs" class="anchor" href="#parselogs"><span class="octicon octicon-link"></span></a><code>parseLogs</code>
+</h2>
 
 <p>The <a href="parseLogs"><code>parseLogs</code></a> bash script allows you to analyse the output of Apple's verbose ubiquity log output and give you some feedback on it.  It is in a very young stage, but is aimed at aiding with debugging any iCloud related sync issues.</p>
 
 <p><img src="http://stuff.lhunath.com/shots/shot.1368550601.png" alt="parseLogs screenshot"></p>
 
-<p>To use the script, just run it (with PWD set to the location of the script or after copying its <code>bashlib</code> dependency into <code>PATH</code>), feeding it the ubiquity log over <code>STDIN</code>:</p>
+<p>To use the script, just run it (while in the directory of the script or after copying its <code>bashlib</code> dependency into <code>PATH</code>), feeding it the ubiquity log over <code>STDIN</code>:</p>
 
 <pre><code>./parseLogs &lt; myapp.logs
 </code></pre>
 
 <p>To make it more verbose, add <code>-v</code> options.  Verbose output will show unprocessed log lines as well.  It is the aim of this script to process all log lines output by Apple's ubiquity logging.  You can contribute either by amending the script or the <a href="LOGS"><code>LOGS</code></a> summary file.</p>
 
-<h1>Under The Hood</h1>
+<h1>
+<a name="under-the-hood" class="anchor" href="#under-the-hood"><span class="octicon octicon-link"></span></a>Under The Hood</h1>
 
 <p><code>UbiquityStoreManager</code> tries hard to hide all the details from you, maintaining the persistentStoreCoordinator for you.  If you're interested in what it does and how things work, read on.</p>
 
-<h2>Terminology</h2>
+<h2>
+<a name="terminology" class="anchor" href="#terminology"><span class="octicon octicon-link"></span></a>Terminology</h2>
 
 <ul>
 <li>USM = <code>UbiquityStoreManager</code>, this project.</li>
 <li>PSC = <code>Persistent Store Coordinator</code>, the object that coordinates between the store file, the store model, and managed contexts.</li>
 <li>MOC = <code>Managed Object Context</code>, a "view" on the data store.  Each context has their own in-memory idea of what the store's objects look like.</li>
-</ul><h2>The Ideology</h2>
+</ul><h2>
+<a name="the-ideology" class="anchor" href="#the-ideology"><span class="octicon octicon-link"></span></a>The Ideology</h2>
 
 <p>The idea behind USM was to create an implementation that hides all the details of loading the persistent store and allows an application to focus on simply using it.</p>
 
@@ -223,7 +235,8 @@
 </ul>
 </li>
 <li>USM immediately unloads the cloud store if the user logs out of their iCloud account on the device or switches to another user's iCloud account.  In the latter case, an iCloud store will be created on the new cloud account from the local store.</li>
-</ul><h2>How Things Work</h2>
+</ul><h2>
+<a name="how-things-work" class="anchor" href="#how-things-work"><span class="octicon octicon-link"></span></a>How Things Work</h2>
 
 <p>When initialized, USM will begin loading a store.  Before any store is loaded, the application's delegate is first notified via <code>willLoadStoreIsCloud:</code>.  At this point, the application may still make any chances it wishes to USM's configuration, and since this method is called from the internal persistence queue, it is in fact the <strong>recommended</strong> place to perform any initial configuration of USM.  Do not do this from the method that called USM's init.</p>
 
@@ -272,19 +285,32 @@ will be seeded from the healthy local cloud store file.  The new cloud store wil
 <code>UbiquityStoreMigrationStrategyManual</code>: This strategy allows the application's delegate to perform the migration by implementing <code>manuallyMigrateStore:</code>.  This may be necessary if you have a really huge or complex data model or want some more control over how exactly to migrate your entities.</li>
 <li>
 <code>UbiquityStoreMigrationStrategyNone</code>: No migration is performed and the new store is opened as-is.</li>
-</ul><h1>License</h1>
+</ul><h1>
+<a name="license" class="anchor" href="#license"><span class="octicon octicon-link"></span></a>License</h1>
 
 <p><code>UbiquityStoreManager</code> is licensed under the <a href="https://github.com/lhunath/UbiquityStoreManager/blob/master/LICENSE">LASGPLv3</a>.  The LASGPLv3 is a modified version of the LGPLv3 with an App Store exemption clause which voids any LGPLv3 language that conflicts with Apple's App Store conditions.  While it's unsure whether the terms of the LGPLv3 are compatible with App Store distribution, this modification of the license makes compatibility explicit and removes any uncertainty.</p>
 
 <p>Feel free to use it in any of your applications.  I’m also happy to receive any comments, feedback or review any pull requests.</p>
         </section>
 
-        <footer>
-          UbiquityStoreManager is maintained by <a href="https://github.com/lhunath">lhunath</a><br>
-          This page was generated by <a href="http://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="http://twitter.com/jasonlong">Jason Long</a>.
-        </footer>
+        <aside id="sidebar">
+          <a href="https://github.com/lhunath/UbiquityStoreManager/zipball/master" class="button">
+            <small>Download</small>
+            .zip file
+          </a>
+          <a href="https://github.com/lhunath/UbiquityStoreManager/tarball/master" class="button">
+            <small>Download</small>
+            .tar.gz file
+          </a>
 
-                  <script type="text/javascript">
+          <p class="repo-owner"><a href="https://github.com/lhunath/UbiquityStoreManager"></a> is maintained by <a href="https://github.com/lhunath">lhunath</a>.</p>
+
+          <p>This page was generated by <a href="pages.github.com">GitHub Pages</a> using the Architect theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.</p>
+        </aside>
+      </div>
+    </div>
+
+            <script type="text/javascript">
             var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
             document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
           </script>
@@ -295,7 +321,5 @@ will be seeded from the healthy local cloud store file.  The new cloud store wil
             } catch(err) {}
           </script>
 
-      </div>
-    </div>
   </body>
 </html>
