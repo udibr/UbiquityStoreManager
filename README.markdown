@@ -1,6 +1,6 @@
 # About
 
-`UbiquityStoreManager` is a controller that implements **iCloud integration with Core Data** for you.
+`UbiquityStoreManager` is a controller that implements **iCloud integration with Core Data** for you, and takes away all the hardship.
 
 While Apple portrays iCloud integration as trivial, the contrary is certainly true.  Especially for Core Data, there are many caveats, side-effects and undocumented behaviors that need to be handled to get a reliable implementation.
 
@@ -15,6 +15,12 @@ I provide `UbiquityStoreManager` and its example application to you for free and
 Creating `UbiquityStoreManager` has taken me a huge amount of work and few developers have so far been brave enough to try and solve the iCloud for Core Data problem that Apple left us with.  This code is provided to you free of cost, in the hopes that it will be useful to you in its current form or another.  If this solution is useful to you, please consider saying *thanks* or donating to the cause.
 
 <a href='http://www.pledgie.com/campaigns/19629'><img alt='Click here to lend your support to: UbiquityStoreManager and make a donation at www.pledgie.com !' src='http://www.pledgie.com/campaigns/19629.png?skin_name=chrome' border='0' /></a>
+
+# Note on iOS 7
+
+Apple has significantly improved their Core Data integration with iCloud in iOS 7.  Applications that wish to benefit from these improvements need to become iOS 7 only.  `UbiquityStoreManager` currently supports only iOS 6.  It will be updated with support for iOS 7, but will most likely migrate iOS 7 devices over to a separate iOS 7-only data store in order to take advantage of Apple's improvements.  The result is that a user's iOS 6 (or OS X 10.8-) devices will not be able to sync to his iOS 7 (or OS X 10.9+) devices and vice-versa.  We may provide an optional programmatic toggle allowing developers to stick to the current `USM` implementation across iOS versions allowing users to keep syncing across versions but losing the benefit of Apple's latest improvements.
+
+Watch the project to be notified as soon as the iOS 7 branch appears.  Currently, `USM` will either work as it did on iOS 6, or it will disable iCloud on the iOS 7 device and fall back to the local store.
 
 # Getting Started
 
