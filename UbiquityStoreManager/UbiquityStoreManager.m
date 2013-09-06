@@ -309,12 +309,43 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     }
 }
 
+- (void)assertQueued {
+
+    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue, @"This call may only be invoked from the persistence queue.");
+}
+
+- (BOOL)ensureQueued:(void (^)())enqueueBlock {
+
+    if ([NSOperationQueue currentQueue] == self.persistentStorageQueue)
+        return YES;
+
+    [self enqueue:enqueueBlock];
+    return NO;
+}
+
+- (void)enqueue:(void (^)())enqueueBlock {
+
+    [self.persistentStorageQueue addOperationWithBlock:^{
+        @try {
+            [self.persistentStoreCoordinator lock];
+            enqueueBlock();
+        }
+        @catch (NSException *exception) {
+            [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0
+                                        userInfo:@{ NSLocalizedFailureReasonErrorKey : [exception description] }]
+                  cause:UbiquityStoreErrorCauseOpenActiveStore context:exception];
+        }
+        @finally {
+            [self.persistentStoreCoordinator unlock];
+        }
+    }];
+}
+
 #pragma mark - Store Management
 
 - (NSPersistentStoreCoordinator *)persistentStoreCoordinator {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Persistence coordinator should only be accessed from the persistence queue.");
+    [self assertQueued];
 
     if (!_persistentStoreCoordinator) {
         _persistentStoreCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
@@ -328,8 +359,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)resetPersistentStoreCoordinator {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Persistence coordinator should only be modified from the persistence queue.");
+    [self assertQueued];
 
     if (_persistentStoreCoordinator) {
         [_persistentStoreCoordinator unlock];
@@ -342,10 +372,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)clearStore {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Store should only be cleared from the persistence queue.");
-
     [self log:@"Clearing stores..."];
+    [self assertQueued];
 
     // Stop listening for store changes.
     [self.storeFilePresenter stop];
@@ -367,8 +395,9 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     // If we failed to remove all the stores, throw away the PSC and create a new one.
     if ([[self.persistentStoreCoordinator persistentStores] count])
         [self resetPersistentStoreCoordinator];
-    else
+    else {
         [self.persistentStoreCoordinator lock];
+    }
 
     dispatch_async( dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:USMStoreDidChangeNotification
@@ -378,41 +407,24 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)reloadStore {
 
-    // Make sure we're on the persistence queue, perform reload synchronously if we already are.
-    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue) {
-        [self.persistentStorageQueue addOperationWithBlock:^{
-            [self reloadStore];
-        }];
+    if (![self ensureQueued:^{ [self reloadStore]; }])
         return;
-    }
 
-    @try {
-        [self.persistentStoreCoordinator tryLock];
-        [self log:@"(Re)loading store..."];
-
-        if (self.cloudEnabled)
-            [self loadCloudStore];
-        else
-            [self loadLocalStore];
-    }
-    @catch (NSException *exception) {
-        [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0
-                                    userInfo:@{ NSLocalizedFailureReasonErrorKey : [exception description] }]
-              cause:UbiquityStoreErrorCauseOpenActiveStore context:exception];
-    }
-    @finally {
-        [self.persistentStoreCoordinator unlock];
-    }
+    [self log:@"(Re)loading store..."];
+    if (self.cloudEnabled)
+        [self loadCloudStore];
+    else
+        [self loadLocalStore];
 }
 
 - (void)loadCloudStore {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Active store should only be changed from the persistence queue.");
+    [self log:@"Will load cloud store."];
+    [self assertQueued];
 
     // Mark store as healthy: opening the store now will tell us whether it's still corrupt.
-    self.activeCloudStoreUUID = nil;
     [self clearStore];
+    self.activeCloudStoreUUID = nil;
 
     // Check if the user is logged into iCloud on the device.
     if (![[NSFileManager defaultManager] ubiquityIdentityToken] || ![self URLForCloudContainer]) {
@@ -425,8 +437,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     NSError *error = nil;
     UbiquityStoreErrorCause cause = UbiquityStoreErrorCauseNoError;
     @try {
-        [self log:@"Will load cloud store: %@ (%@%@).", [self storeUUIDForLog], _tentativeStoreUUID? @"tentative": @"definite",
-                  self.migrationStoreURL? [@", migrating from " stringByAppendingString:[self.migrationStoreURL lastPathComponent]]: @""];
+        [self log:@"Loading cloud store: %@ (%@).", [self storeUUIDForLog], _tentativeStoreUUID? @"tentative": @"definite"];
 
         // Create the path to the cloud store and content if it doesn't exist yet.
         NSURL *cloudStoreURL = [self URLForCloudStore];
@@ -452,8 +463,17 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         // Check if we need to seed the store by migrating another store into it.
         UbiquityStoreMigrationStrategy migrationStrategy = self.migrationStrategy;
         NSURL *migrationStoreURL = self.migrationStoreURL? self.migrationStoreURL: [self localStoreURL];
-        if (![self cloudSafeForSeeding] || ![[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path])
+        if (migrationStrategy == UbiquityStoreMigrationStrategyNone ||
+            ![self cloudSafeForSeeding] ||
+            ![[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path] ||
+            // We want to migrate from migrationStoreURL, check with application.
+            ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:shouldMigrateFromStoreURL:toStoreURL:isCloud:)] &&
+             ![self.delegate ubiquityStoreManager:self
+                        shouldMigrateFromStoreURL:migrationStoreURL toStoreURL:cloudStoreURL
+                                          isCloud:NO]))
             migrationStrategy = UbiquityStoreMigrationStrategyNone;
+        else
+            [self log:@"Will migrate to cloud store from: %@ (strategy: %d).", migrationStoreURL, migrationStrategy];
 
         // Load the cloud store.
         NSMutableDictionary *cloudStoreOptions = [@{
@@ -502,7 +522,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
             // 2. To make sure our store is up-to-date before we destroy the cloud content and rebuild it from the store.
             dispatch_after( dispatch_time( DISPATCH_TIME_NOW, NSEC_PER_SEC * 20 ),
                     dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0 ), ^{
-                        [self.persistentStorageQueue addOperationWithBlock:^{
+                        [self enqueue:^{
                             if (self.activeCloudStoreUUID && ![self.localCloudStoreCorruptedUUID isEqualToString:self.storeUUID])
                                     // The wait is over and this store is still healthy.
                                     // It is now eligible for rebuilding corrupt content if there is any.
@@ -560,17 +580,15 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)loadLocalStore {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Active store should only be changed from the persistence queue.");
-
     [self log:@"Will load local store."];
+    [self assertQueued];
+
+    [self clearStore];
 
     id context = nil;
     NSError *error = nil;
     UbiquityStoreErrorCause cause = UbiquityStoreErrorCauseNoError;
     @try {
-        [self clearStore];
-
         // Make sure local store directory exists.
         NSURL *localStoreURL = [self URLForLocalStore];
         NSURL *localStoreDirectoryURL = [self URLForLocalStoreDirectory];
@@ -584,9 +602,18 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         // Check if we need to seed the store by migrating another store into it.
         UbiquityStoreMigrationStrategy migrationStrategy = self.migrationStrategy;
         NSURL *migrationStoreURL = self.migrationStoreURL;
-        if (![[NSFileManager defaultManager] fileExistsAtPath:self.migrationStoreURL.path] ||
+        if (migrationStrategy == UbiquityStoreMigrationStrategyNone ||
+            ![[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path] ||
+            // We want to migrate from migrationStoreURL, check with application.
+            ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:shouldMigrateFromStoreURL:toStoreURL:isCloud:)] &&
+             ![self.delegate ubiquityStoreManager:self
+                        shouldMigrateFromStoreURL:migrationStoreURL toStoreURL:localStoreURL
+                                          isCloud:NO]) ||
+            // Migration OK'ed by application, make sure destination store doesn't exist.
             [[NSFileManager defaultManager] fileExistsAtPath:localStoreURL.path])
             migrationStrategy = UbiquityStoreMigrationStrategyNone;
+        else
+            [self log:@"Will migrate to local store from: %@ (strategy: %d).", migrationStoreURL, migrationStrategy];
 
         // Load the local store.
         NSMutableDictionary *localStoreOptions = [@{
@@ -596,7 +623,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         NSMutableDictionary *migrationStoreOptions = [@{
                 NSReadOnlyPersistentStoreOption : @YES
         } mutableCopy];
-        if ([[self.migrationStoreURL URLByDeletingLastPathComponent].path
+        if ([[migrationStoreURL URLByDeletingLastPathComponent].path
                 isEqualToString:[self URLForCloudStoreDirectory].path])
                 // Migration store is a cloud store.
             [migrationStoreOptions addEntriesFromDictionary:@{
@@ -667,8 +694,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
          usingStrategy:(UbiquityStoreMigrationStrategy)migrationStrategy
                  cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Active store should only be changed from the persistence queue.");
+    [self assertQueued];
 
     NSError *error = nil;
     __block NSError *error_ = nil;
@@ -792,6 +818,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 - (BOOL)copyMigrateStore:(NSURL *)migrationStoreURL withOptions:(NSDictionary *)migrationStoreOptions
                  toStore:(NSURL *)targetStoreURL withOptions:(NSDictionary *)targetStoreOptions
                    error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context {
+
+    [self assertQueued];
 
     NSError *error = nil;
     __block NSError *error_ = nil;
@@ -921,8 +949,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 - (id)copyMigrateObject:(NSManagedObject *)sourceObject toContext:(NSManagedObjectContext *)destinationContext
     usingMigrationCache:(NSMutableDictionary *)migratedIDsBySourceID {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Migration should only be done from the persistence queue.");
+    [self assertQueued];
 
     if (!sourceObject)
         return nil;
@@ -1006,135 +1033,115 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)deleteCloudContainerLocalOnly:(BOOL)localOnly {
 
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        @try {
-            [self.persistentStoreCoordinator lock];
-            [self log:@"Will delete the cloud container %@.",
-                      localOnly? @"on this device": @"on this device and in the cloud"];
+    if (![self ensureQueued:^{ [self deleteCloudContainerLocalOnly:localOnly]; }])
+        return;
 
-            if (self.cloudEnabled)
-                [self clearStore];
+    [self log:@"Will delete the cloud container %@.", localOnly? @"on this device": @"on this device and in the cloud"];
+    @try {
+        if (self.cloudEnabled)
+            [self clearStore];
 
-            // Delete the whole cloud container.
-            [self removeItemAtURL:[self URLForCloudContainer] localOnly:localOnly];
+        // Delete the whole cloud container.
+        [self removeItemAtURL:[self URLForCloudContainer] localOnly:localOnly];
 
-            // Unset the storeUUID so a new one will be created.
-            if (!localOnly) {
-                [self createTentativeStoreUUID];
-                NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
-                [cloud synchronize];
-                for (id key in [[cloud dictionaryRepresentation] allKeys])
-                    [cloud removeObjectForKey:key];
-                // Don't synchronize.  Otherwise another devices might recreate the cloud store before we do.
-            }
+        // Unset the storeUUID so a new one will be created.
+        if (!localOnly) {
+            [self createTentativeStoreUUID];
+            NSUbiquitousKeyValueStore *cloud = [NSUbiquitousKeyValueStore defaultStore];
+            [cloud synchronize];
+            for (id key in [[cloud dictionaryRepresentation] allKeys])
+                [cloud removeObjectForKey:key];
+            // Don't synchronize.  Otherwise another devices might recreate the cloud store before we do.
         }
-        @catch (NSException *exception) {
-            [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0
-                                        userInfo:@{ NSLocalizedFailureReasonErrorKey : [exception description] }]
-                  cause:UbiquityStoreErrorCauseDeleteStore context:exception];
-        }
-        @finally {
-            [self.persistentStoreCoordinator unlock];
-
-            if (self.cloudEnabled)
-                [self reloadStore];
-        }
-    }];
+    }
+    @finally {
+        if (self.cloudEnabled)
+            [self reloadStore];
+    }
 }
 
 - (void)deleteCloudStoreLocalOnly:(BOOL)localOnly {
 
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        @try {
-            [self.persistentStoreCoordinator lock];
-            [self log:@"Will delete the cloud store (UUID:%@) %@.", [self storeUUIDForLog],
-                      localOnly? @"on this device": @"on this device and in the cloud"];
+    if (![self ensureQueued:^{ [self deleteCloudStoreLocalOnly:localOnly]; }])
+        return;
 
-            if (self.cloudEnabled)
-                [self clearStore];
+    [self log:@"Will delete the cloud store (UUID:%@) %@.", [self storeUUIDForLog],
+              localOnly? @"on this device": @"on this device and in the cloud"];
+    @try {
+        if (self.cloudEnabled)
+            [self clearStore];
 
-            // Clean up any cloud stores and transaction logs.
-            [self removeItemAtURL:[self URLForCloudStore] localOnly:localOnly];
-            [self removeItemAtURL:[self URLForCloudContent] localOnly:localOnly];
+        // Clean up any cloud stores and transaction logs.
+        [self removeItemAtURL:[self URLForCloudStore] localOnly:localOnly];
+        [self removeItemAtURL:[self URLForCloudContent] localOnly:localOnly];
 
-            // Create a tentative StoreUUID so a new cloud store will be created.
-            if (!localOnly)
-                [self createTentativeStoreUUID];
-        }
-        @catch (NSException *exception) {
-            [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0
-                                        userInfo:@{ NSLocalizedFailureReasonErrorKey : [exception description] }]
-                  cause:UbiquityStoreErrorCauseDeleteStore context:exception];
-        }
-        @finally {
-            [self.persistentStoreCoordinator unlock];
-
-            if (self.cloudEnabled)
-                [self reloadStore];
-        }
-    }];
+        // Create a tentative StoreUUID so a new cloud store will be created.
+        if (!localOnly)
+            [self createTentativeStoreUUID];
+    }
+    @finally {
+        if (self.cloudEnabled)
+            [self reloadStore];
+    }
 }
 
 - (void)deleteLocalStore {
 
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        @try {
-            [self.persistentStoreCoordinator lock];
-            [self log:@"Will delete the local store."];
+    if (![self ensureQueued:^{ [self deleteLocalStore]; }])
+        return;
 
-            if (!self.cloudEnabled)
-                [self clearStore];
+    [self log:@"Will delete the local store."];
+    @try {
+        if (!self.cloudEnabled)
+            [self clearStore];
 
-            // Remove just the local store.
-            [self removeItemAtURL:[self URLForLocalStore] localOnly:YES];
-        }
-        @catch (NSException *exception) {
-            [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0
-                                        userInfo:@{ NSLocalizedFailureReasonErrorKey : [exception description] }]
-                  cause:UbiquityStoreErrorCauseDeleteStore context:exception];
-        }
-        @finally {
-            [self.persistentStoreCoordinator unlock];
-
-            if (!self.cloudEnabled)
-                [self reloadStore];
-        }
-    }];
+        // Remove just the local store.
+        [self removeItemAtURL:[self URLForLocalStore] localOnly:YES];
+    }
+    @finally {
+        if (!self.cloudEnabled)
+            [self reloadStore];
+    }
 }
 
-- (void)migrateCloudToLocalAndDeleteCloudStoreLocalOnly:(BOOL)localOnly {
+- (void)migrateCloudToLocal {
 
-    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue) {
-        [self.persistentStorageQueue cancelAllOperations];
-        [self.persistentStorageQueue addOperationWithBlock:^{
-            [self migrateCloudToLocalAndDeleteCloudStoreLocalOnly:localOnly];
-        }];
+    if (![self ensureQueued:^{ [self migrateCloudToLocal]; }])
         return;
-    }
 
-    self.migrationStoreURL = [self URLForCloudStore];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:self.migrationStoreURL.path]) {
+    NSURL *cloudStoreURL = [self URLForCloudStore];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:cloudStoreURL.path]) {
         [self log:@"Cannot migrate cloud to local: Cloud store doesn't exist."];
-        self.migrationStoreURL = nil;
         return;
     }
 
     [self log:@"Will overwrite the local store with the cloud store."];
-
+    self.migrationStoreURL = cloudStoreURL;
     [self deleteLocalStore];
     self.cloudEnabled = NO;
-    [self deleteCloudStoreLocalOnly:localOnly];
+}
+
+- (void)migrateLocalToCloud {
+
+    if (![self ensureQueued:^{ [self migrateLocalToCloud]; }])
+        return;
+
+    NSURL *localStoreURL = self.localStoreURL;
+    if (![[NSFileManager defaultManager] fileExistsAtPath:localStoreURL.path]) {
+        [self log:@"Cannot migrate local to cloud: Local store doesn't exist."];
+        return;
+    }
+
+    [self log:@"Will overwrite the cloud store with the local store."];
+    self.migrationStoreURL = localStoreURL;
+    [self deleteCloudStoreLocalOnly:NO];
+    self.cloudEnabled = YES;
 }
 
 - (void)rebuildCloudContentFromCloudStoreOrLocalStore:(BOOL)allowRebuildFromLocalStore {
 
-    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue) {
-        [self.persistentStorageQueue cancelAllOperations];
-        [self.persistentStorageQueue addOperationWithBlock:^{
-            [self rebuildCloudContentFromCloudStoreOrLocalStore:allowRebuildFromLocalStore];
-        }];
+    if (![self ensureQueued:^{ [self rebuildCloudContentFromCloudStoreOrLocalStore:allowRebuildFromLocalStore]; }])
         return;
-    }
 
     NSURL *cloudStoreURL = [self URLForCloudStore];
     if (![[NSFileManager defaultManager] fileExistsAtPath:cloudStoreURL.path]) {
@@ -1150,40 +1157,29 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         return;
     }
 
-    @try {
-        [self.persistentStoreCoordinator lock];
-        [self log:@"Will rebuild cloud content from the cloud store."];
-        [self clearStore];
+    [self log:@"Will rebuild cloud content from the cloud store."];
+    [self clearStore];
 
-        NSError *error = nil;
-        __block NSError *error_ = nil;
-        __block BOOL success = NO;
-        self.migrationStoreURL = [[self URLForCloudStoreDirectory] URLByAppendingPathComponent:USMCloudStoreMigrationSource isDirectory:NO];
-        [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
-                coordinateReadingItemAtURL:cloudStoreURL options:(NSFileCoordinatorReadingOptions)0
-                          writingItemAtURL:self.migrationStoreURL options:NSFileCoordinatorWritingForReplacing
-                                     error:&error byAccessor:
-                ^(NSURL *newReadingURL, NSURL *newWritingURL) {
-                    [[NSFileManager defaultManager] removeItemAtURL:newWritingURL error:&error_];
-                    success = [[NSFileManager defaultManager] moveItemAtURL:newReadingURL toURL:newWritingURL error :&error_];
-                }];
-        if (!success) {
-            [self error:error_? error_: error cause:UbiquityStoreErrorCauseSeedStore context:self.migrationStoreURL.path];
-            [self reloadStore];
-            return;
-        }
+    NSError *error = nil;
+    __block NSError *error_ = nil;
+    __block BOOL success = NO;
+    self.migrationStoreURL = [[self URLForCloudStoreDirectory] URLByAppendingPathComponent:USMCloudStoreMigrationSource isDirectory:NO];
+    [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
+            coordinateReadingItemAtURL:cloudStoreURL options:(NSFileCoordinatorReadingOptions)0
+                      writingItemAtURL:self.migrationStoreURL options:NSFileCoordinatorWritingForReplacing
+                                 error:&error byAccessor:
+            ^(NSURL *newReadingURL, NSURL *newWritingURL) {
+                [[NSFileManager defaultManager] removeItemAtURL:newWritingURL error:&error_];
+                success = [[NSFileManager defaultManager] moveItemAtURL:newReadingURL toURL:newWritingURL error :&error_];
+            }];
+    if (!success) {
+        [self error:error_? error_: error cause:UbiquityStoreErrorCauseSeedStore context:self.migrationStoreURL.path];
+        [self reloadStore];
+        return;
+    }
 
-        [self deleteCloudStoreLocalOnly:NO];
-        self.cloudEnabled = YES;
-    }
-    @catch (NSException *exception) {
-        [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0
-                                    userInfo:@{ NSLocalizedFailureReasonErrorKey : [exception description] }]
-              cause:UbiquityStoreErrorCauseSeedStore context:exception];
-    }
-    @finally {
-        [self.persistentStoreCoordinator unlock];
-    }
+    [self deleteCloudStoreLocalOnly:NO];
+    self.cloudEnabled = YES;
 }
 
 #pragma mark - Properties
@@ -1204,12 +1200,59 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
             // Can't enable iCloud: No iCloud account is configured on the device.
         return;
 
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-        [local setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];
+    if (![self ensureQueued:^{ [self setCloudEnabled:enabled]; }])
+        return;
 
-        [self reloadStore];
-    }];
+    NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
+    [local setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];
+
+    [self reloadStore];
+}
+
+- (void)setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock {
+
+    if (self.cloudEnabled)
+        return;
+
+    if (![self ensureQueued:^{ [self setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:confirmationBlock]; }])
+        return;
+
+    if (![self cloudSafeForSeeding] && [self dispatchAndWaitFor:confirmationBlock])
+        [self migrateLocalToCloud];
+    else
+        [self setCloudEnabled:YES];
+}
+
+- (void)setCloudDisabledAndOverwriteLocalWithCloudIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock {
+
+    if (!self.cloudEnabled)
+        return;
+
+    if (![self ensureQueued:^{ [self setCloudDisabledAndOverwriteLocalWithCloudIfConfirmed:confirmationBlock]; }])
+        return;
+
+    if ([[NSFileManager defaultManager] fileExistsAtPath:self.localStoreURL.path] && [self dispatchAndWaitFor:confirmationBlock])
+        [self migrateCloudToLocal];
+    else
+        [self setCloudEnabled:NO];
+}
+
+- (BOOL)dispatchAndWaitFor:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock {
+
+    NSAssert(![[NSThread currentThread] isMainThread], @"Cannot dispatch a confirmation from the main thread.");
+
+    __block BOOL confirmation = NO;
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_group_enter( group );
+    dispatch_async( dispatch_get_main_queue(), ^{
+        confirmationBlock( ^(BOOL answer) {
+            confirmation = answer;
+            dispatch_group_leave( group );
+        } );
+    } );
+    dispatch_group_wait( group, DISPATCH_TIME_FOREVER );
+
+    return confirmation;
 }
 
 /**
@@ -1237,12 +1280,27 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
                     [self error:error_ cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
             }];
     if (![activeUUID length]) {
-        // Failed to read StoreUUIDFile.  Without it, we cannot proceed.  Disable iCloud.
-        // Delete the file locally in case the user wants to try again.
-        self.cloudEnabled = NO;
-        [self removeItemAtURL:storeUUIDFile localOnly:YES];
-        @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Failed to obtain active store UUID."
-                                     userInfo:@{ NSUnderlyingErrorKey : error }];
+        // Try without forcing saves.
+        [[[NSFileCoordinator alloc] initWithFilePresenter:self.storeUUIDPresenter]
+                coordinateReadingItemAtURL:storeUUIDFile options:NSFileCoordinatorReadingWithoutChanges
+                                     error:&error byAccessor:
+                ^(NSURL *newURL) {
+                    NSError *error_ = nil;
+                    if (!(activeUUID = [[NSString alloc] initWithContentsOfURL:newURL encoding:NSASCIIStringEncoding error:&error_]))
+                        [self error:error_ cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
+                }];
+        if (![activeUUID length]) {
+            // Try without coordinating.
+            if (!(activeUUID = [[NSString alloc] initWithContentsOfURL:storeUUIDFile encoding:NSASCIIStringEncoding error:&error])) {
+                // Failed to read StoreUUIDFile.  Without it, we cannot proceed.  Disable iCloud.
+                // Delete the file locally in case the user wants to try again.
+                [self error:error cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
+                self.cloudEnabled = NO;
+                [self removeItemAtURL:storeUUIDFile localOnly:YES];
+                @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Failed to obtain active store UUID."
+                                             userInfo:@{ NSUnderlyingErrorKey : error }];
+            }
+        }
     }
 
     return activeUUID;
@@ -1260,8 +1318,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (NSString *)storeUUID {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"StoreUUID should only be accessed from the persistence queue.");
+    [self assertQueued];
 
     NSString *storeUUID = [self storeUUID_ThreadSafe];
 
@@ -1274,13 +1331,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)setStoreUUID:(NSString *)newStoreUUID {
 
-    // Make sure we're on the persistence queue, perform reload synchronously if we already are.
-    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue) {
-        [self.persistentStorageQueue addOperationWithBlock:^{
-            [self setStoreUUID:newStoreUUID];
-        }];
+    if (![self ensureQueued:^{ [self setStoreUUID:newStoreUUID]; }])
         return;
-    }
 
     // A new cloud store went live: clear any old cloud corruption.
     [self removeItemAtURL:[self URLForCloudCorruptedUUID] localOnly:NO];
@@ -1304,15 +1356,14 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
  */
 - (void)confirmTentativeStoreUUID {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Tentative StoreUUID should only be confirmed from the persistence queue.");
+    [self assertQueued];
 
-    if (self.tentativeStoreUUID) {
-        [self log:@"Confirming tentative StoreUUID: %@", self.tentativeStoreUUID];
+    if (!self.tentativeStoreUUID)
+        return;
 
-        [self setStoreUUID:self.tentativeStoreUUID];
-        [self unsetTentativeStoreUUID];
-    }
+    [self log:@"Confirming tentative StoreUUID: %@", self.tentativeStoreUUID];
+    [self setStoreUUID:self.tentativeStoreUUID];
+    [self unsetTentativeStoreUUID];
 }
 
 /**
@@ -1320,8 +1371,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
  */
 - (NSString *)createTentativeStoreUUID {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Tentative StoreUUID should only be set from the persistence queue.");
+    [self assertQueued];
 
     return self.tentativeStoreUUID = [[NSUUID UUID] UUIDString];
 }
@@ -1331,8 +1381,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
  */
 - (void)unsetTentativeStoreUUID {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Tentative StoreUUID should only be unset from the persistence queue.");
+    [self assertQueued];
 
     self.tentativeStoreUUID = nil;
 }
@@ -1341,30 +1390,35 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)storeUUIDDidChange {
 
-    // The UUID of the active store changed.  We need to switch to the newly activated store.
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        if ([self.activeCloudStoreUUID isEqualToString:[self storeUUID]])
-            return;
+    if (![self ensureQueued:^{ [self storeUUIDDidChange]; }])
+        return;
 
-        [self log:@"StoreUUID changed %@ -> %@", self.activeCloudStoreUUID, [self storeUUIDForLog]];
-        [self unsetTentativeStoreUUID];
-        [self cloudStoreChanged:nil];
-    }];
+    // The UUID of the active store changed.  We need to switch to the newly activated store.
+    if ([self.activeCloudStoreUUID isEqualToString:[self storeUUID]])
+        return;
+
+    [self log:@"StoreUUID changed %@ -> %@", self.activeCloudStoreUUID, [self storeUUIDForLog]];
+    [self unsetTentativeStoreUUID];
+    [self cloudStoreChanged:nil];
 }
 
+// Cloud content corruption was detected or cleared.
 - (void)corruptedUUIDDidChange {
 
-    // Cloud content corruption was detected or cleared.
-    if (self.cloudEnabled)
-        [self.persistentStorageQueue addOperationWithBlock:^{
-            if (![self handleCloudContentCorruption] && !self.activeCloudStoreUUID)
-                    // Corruption was removed and our cloud store is not yet loaded.  Try loading the store again.
-                [self reloadStore];
-        }];
+    if (!self.cloudEnabled)
+        return;
+
+    if (![self ensureQueued:^{ [self corruptedUUIDDidChange]; }])
+        return;
+
+    if (![self handleCloudContentCorruption] && !self.activeCloudStoreUUID)
+            // Corruption was removed and our cloud store is not yet loaded.  Try loading the store again.
+        [self reloadStore];
 }
 
 - (void)accommodateStoreFileDeletionWithCompletionHandler:(void (^)(NSError *))completionHandler {
 
+    // Clean up.
     [self.persistentStorageQueue addOperations:@[
             [NSBlockOperation blockOperationWithBlock:^{
                 @try {
@@ -1388,8 +1442,10 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
             }]
     ]                        waitUntilFinished:YES];
 
+    // Accommodate deletion.
     completionHandler( nil );
 
+    // Recover.
     if (self.cloudEnabled) {
         if ([self.delegate respondsToSelector:@selector(ubiquityStoreManagerHandleCloudContentDeletion:)])
             [self.delegate ubiquityStoreManagerHandleCloudContentDeletion:self];
@@ -1426,7 +1482,10 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 - (void)markCloudStoreCorrupted {
 
     self.localCloudStoreCorruptedUUID = self.storeUUID_ThreadSafe;
-    NSAssert(self.localCloudStoreCorruptedUUID, @"Corruption detected on a tentative store?");
+    if (!self.localCloudStoreCorruptedUUID) {
+        NSAssert(self.localCloudStoreCorruptedUUID, @"Corruption detected on a tentative store?");
+        return;
+    }
 
     NSError *error = nil;
     NSURL *corruptedUUIDFile = [self URLForCloudCorruptedUUID];
@@ -1440,15 +1499,12 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     if (error)
         [self error:error cause:UbiquityStoreErrorCauseCorruptActiveStore context:corruptedUUIDFile.path];
 
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        [self handleCloudContentCorruption];
-    }];
+    [self enqueue:^{ [self handleCloudContentCorruption]; }];
 }
 
 - (BOOL)handleCloudContentCorruption {
 
-    NSAssert([NSOperationQueue currentQueue] == self.persistentStorageQueue,
-    @"Cloud corruption can only be checked from the persistence queue.");
+    [self assertQueued];
 
     if (!self.cloudEnabled)
             // Cloud not enabled: cannot handle corruption.
@@ -1476,14 +1532,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     // Unload the cloud store if it's loaded and corrupt.
     BOOL localStoreCorrupted = [self.localCloudStoreCorruptedUUID isEqualToString:self.storeUUID];
     if (localStoreCorrupted) {
-        @try {
-            [self.persistentStoreCoordinator lock];
-            [self clearStore];
-        }
-        @finally {
-            [self.persistentStoreCoordinator unlock];
-        }
-
+        [self clearStore];
         [self.storeUUIDPresenter = [[USMStoreUUIDPresenter alloc] initWithURL:[self URLForCloudStoreUUID] delegate:self] start];
         [self.corruptedUUIDPresenter = [[USMCorruptedUUIDPresenter alloc] initWithURL:[self URLForCloudCorruptedUUID] delegate:self] start];
     }
@@ -1535,32 +1584,29 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
 - (void)mergeChanges:(NSNotification *)note {
 
-    [self.persistentStorageQueue addOperationWithBlock:^{
-        NSManagedObjectContext *moc = nil;
-        if ([self.delegate respondsToSelector:@selector(managedObjectContextForUbiquityChangesInManager:)])
-            moc = [self.delegate managedObjectContextForUbiquityChangesInManager:self];
-        if (!moc) {
-            [self log:@"Application did not specify an import MOC, not importing ubiquity changes:\n%@", note.userInfo];
-            return;
-        }
-
+    NSManagedObjectContext *moc = nil;
+    if ([self.delegate respondsToSelector:@selector(managedObjectContextForUbiquityChangesInManager:)])
+        moc = [self.delegate managedObjectContextForUbiquityChangesInManager:self];
+    if (moc) {
         [self log:@"Importing ubiquity changes into application's MOC.  Changes:\n%@", note.userInfo];
         [moc performBlockAndWait:^{
             [moc mergeChangesFromContextDidSaveNotification:note];
 
             NSError *error = nil;
-            if (![moc save:&error]) {
+            if ([moc hasChanges] && ![moc save:&error]) {
                 [self error:error cause:UbiquityStoreErrorCauseImportChanges context:note];
                 [self reloadStore];
                 return;
             }
-
-            dispatch_async( dispatch_get_main_queue(), ^{
-                [[NSNotificationCenter defaultCenter] postNotificationName:USMStoreDidImportChangesNotification
-                                                                    object:self userInfo:[note userInfo]];
-            } );
         }];
-    }];
+    }
+    else
+        [self log:@"Application did not specify an import MOC, not importing ubiquity changes:\n%@", note.userInfo];
+
+    dispatch_async( dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:USMStoreDidImportChangesNotification
+                                                            object:self userInfo:[note userInfo]];
+    } );
 }
 
 @end

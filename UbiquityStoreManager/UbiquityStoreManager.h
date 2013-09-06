@@ -36,7 +36,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreData/CoreData.h>
 
-
 /**
  * The store managed by the ubiquity manager's coordinator changed (eg. switching (no store) or switched to iCloud or local).
  *
@@ -178,10 +177,11 @@ typedef enum {
  *      NOTE: The cloud data and cloud syncing will be unavailable.
  * - Delete the cloud data and recreate it by seeding it with the local store ([manager deleteCloudStoreLocalOnly:NO]).
  *      NOTE: The existing cloud data will be lost.
- * - Make the existing cloud data local and disable iCloud ([manager migrateCloudToLocalAndDeleteCloudStoreLocalOnly:NO]).
+ * - Make the existing cloud data local and disable iCloud ([manager migrateCloudToLocal]).
  *      NOTE: The existing local store will be lost.
  *      NOTE: The cloud data known by this device will become available again.
- *      NOTE: If you set localOnly to NO, the user can re-enable iCloud but any cloud data not synced to this device will be lost.
+ *      NOTE: The cloud store is still in a corrupt state.  The user can either re-try later, or you can rebuild the cloud store from
+  *           the local store ([manager deleteCloudStoreLocalOnly:NO]).
  * - Rebuild the cloud content by seeding it with the cloud store of this device ([manager rebuildCloudContentFromCloudStoreOrLocalStore:YES]).
  *      NOTE: iCloud functionality will be completely restored with the cloud data known by this device.
  *      NOTE: Any cloud changes on other devices that failed to sync to this device will be lost.
@@ -236,6 +236,27 @@ typedef enum {
 @optional
 - (void)ubiquityStoreManager:(UbiquityStoreManager *)manager log:(NSString *)message;
 
+/** Triggered when the store manager is about to migrate entities from one store to another.
+ *
+ * The migration store will be unaffected by the process.  If the destination store exists already, migration won't happen regardless of
+ * what you return here.  You can force the migration to happen by manually deleting the destination store.
+ *
+ * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.  Any stores have
+ * been unloaded and there will be no store loaded when this method is called.
+ *
+ * @param migrationStoreURL The URL to the store where entities will be copied from.
+ * @param destinationStoreURL The URL to the store where entities will be copied to.
+ * @param toCloud YES if the migrating entities will be copied into a new cloud store, NO if they will be copied into a new local store.
+ * @return YES to confirm that the manager may proceed with the migration.
+ *         NO to abort the migration and instead just load the destination store as-is.  If there is no destination store yet, this will
+ *         cause an empty one to be created instead.
+ */
+@optional
+- (BOOL)ubiquityStoreManager:(UbiquityStoreManager *)manager
+   shouldMigrateFromStoreURL:(NSURL *)migrationStoreURL
+                  toStoreURL:(NSURL *)destinationStoreURL
+                     isCloud:(BOOL)isCloudStore;
+
 /** Triggered when the store manager needs to perform a manual store migration.
  *
  * Implementing this method is required if you set -migrationStrategy to UbiquityStoreMigrationStrategyManual.
@@ -270,7 +291,7 @@ typedef enum {
  *
  * You probably won't need to touch this (it is set from init).
  *
- * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ * NOTE: Use this only from the persistence queue (ie. see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  */
 @property(nonatomic, copy) NSURL *localStoreURL;
@@ -280,7 +301,7 @@ typedef enum {
  *
  * The default is UbiquityStoreMigrationStrategyCopyEntities.
  *
- * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  */
 @property(nonatomic, assign) UbiquityStoreMigrationStrategy migrationStrategy;
@@ -319,6 +340,40 @@ typedef enum {
 #pragma mark - Maintenance
 
 /**
+ * Switch to the cloud store if not enabled already.
+ *
+ * If a cloud store already exists, the confirmationBlock will be triggered.
+ * If you confirm with YES, the existing cloud store will be deleted and a new one will be created by migrating the local store.
+ * If you confirm with NO, the existing cloud store will be loaded.
+ *
+ * This is an ideal method to use if you want to give your users a chance to "keep their current data" by popping an alert.
+ * Make sure they understand that doing so will cause any existing cloud data to be lost.
+ *
+ * NOTE: For your convenience, the confirmationBlock is executed ON THE MAIN THREAD.
+ * Call the block you're given when you have determined the confirmation answer.  The store manager will be blocked until you make the call!
+ *
+ * @param confirmationBlock The block that will be triggered when an existing cloud store exists and confirmation is needed to either overwrite it with the local store or load it as-is.
+ */
+- (void)setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock;
+
+/**
+ * Switch to the local store if not enabled already.
+ *
+ * If a local store already exists, the confirmationBlock will be triggered.
+ * If you confirm with YES, the existing local store will be deleted and a new one will be created by migrating the cloud store.
+ * If you confirm with NO, the existing local store will be loaded.
+ *
+ * This is an ideal method to use if you want to give your users a chance to "keep their current data" by popping an alert.
+ * Make sure they understand that doing so will cause any existing local data to be lost.
+ *
+ * NOTE: For your convenience, the confirmationBlock is executed ON THE MAIN THREAD.
+ * Call the block you're given when you have determined the confirmation answer.  The store manager will be blocked until you make the call!
+ *
+ * @param confirmationBlock The block that will be triggered when an existing local store exists and confirmation is needed to either overwrite it with the cloud store or load it as-is.
+ */
+- (void)setCloudDisabledAndOverwriteLocalWithCloudIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock;
+
+/**
  * Clear and re-open the store.
  *
  * This is rarely useful if you want to re-try opening the active store.  You usually won't need to invoke this manually.
@@ -328,7 +383,7 @@ typedef enum {
 /**
  * This will delete all the data from iCloud for this application.
  *
- * @param localOnly If YES, the iCloud data will be redownloaded when needed.
+ * @param localOnly If YES, the iCloud data will be re-downloaded when needed.
  *                  If NO, the container's data will be permanently lost.
  *
  * Unless you intend to delete more than just the active cloud store, you should probably use -deleteCloudStoreLocalOnly: instead.
@@ -338,7 +393,7 @@ typedef enum {
 /**
  * This will delete the iCloud store.
  *
- * @param localOnly If YES, the iCloud transaction logs will be redownloaded and the store rebuilt.
+ * @param localOnly If YES, the iCloud transaction logs will be re-downloaded and the store rebuilt.
  *                  If NO, the store will be permanently lost and a new one will be created by migrating the device's local store.
  */
 - (void)deleteCloudStoreLocalOnly:(BOOL)localOnly;
@@ -349,12 +404,14 @@ typedef enum {
 - (void)deleteLocalStore;
 
 /**
- * This will delete the local store and migrate the cloud store to a new local store.  The cloud store is subsequently deleted.  The device will subsequently load the new local store (disable cloud).
- *
- * @param localOnly If YES, the cloud content is not deleted from iCloud.
- *                  If NO, the cloud store will be permanently lost and a new one will be created by migrating the new local store when iCloud is re-enabled.
+ * This will delete the local store and migrate the cloud store to a new local store.  The device will subsequently load the new local store (disable cloud).
  */
-- (void)migrateCloudToLocalAndDeleteCloudStoreLocalOnly:(BOOL)localOnly;
+- (void)migrateCloudToLocal;
+
+/**
+ * This will delete the cloud store and migrate the local store to a new cloud store.  The device will subsequently load the new cloud store (enable cloud).
+ */
+- (void)migrateLocalToCloud;
 
 /**
  * This will delete the cloud content and recreate a new cloud store by seeding it with the current cloud store.
@@ -383,7 +440,7 @@ typedef enum {
 - (NSURL *)URLForCloudStoreDirectory;
 
 /**
- * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @return URL to the active cloud store's database.
@@ -396,7 +453,7 @@ typedef enum {
 - (NSURL *)URLForCloudContentDirectory;
 
 /**
- * NOTE: Use this only from the persistence queue (see delegate method documentation).
+ * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @return URL to the active cloud store's transaction logs.
@@ -419,6 +476,9 @@ typedef enum {
  * Migrate a store to another by copying all metadata, entities and relationships from the migration store to the target store.
  *
  * This is the implementation of the UbiquityStoreMigrationStrategyCopyEntities strategy, in case you want it for your own migration code.
+ *
+ * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
+ *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @param migrationStoreURL The URL to the store file of the store from which to copy data.
  * @param migrationStoreOptions The options to use when opening the migration store.  These should probably include NSReadOnlyPersistentStoreOption.
