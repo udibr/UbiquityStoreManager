@@ -36,6 +36,34 @@ NSString *const USMCloudContentDirectory = @"CloudLogs";
 NSString *const USMCloudContentStoreUUID = @"StoreUUID";
 NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
+extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
+
+    switch (cause) {
+        case UbiquityStoreErrorCauseNoError:
+            return @"UbiquityStoreErrorCauseNoError";
+        case UbiquityStoreErrorCauseDeleteStore:
+            return @"UbiquityStoreErrorCauseDeleteStore";
+        case UbiquityStoreErrorCauseCreateStorePath:
+            return @"UbiquityStoreErrorCauseCreateStorePath";
+        case UbiquityStoreErrorCauseClearStore:
+            return @"UbiquityStoreErrorCauseClearStore";
+        case UbiquityStoreErrorCauseOpenActiveStore:
+            return @"UbiquityStoreErrorCauseOpenActiveStore";
+        case UbiquityStoreErrorCauseOpenSeedStore:
+            return @"UbiquityStoreErrorCauseOpenSeedStore";
+        case UbiquityStoreErrorCauseSeedStore:
+            return @"UbiquityStoreErrorCauseSeedStore";
+        case UbiquityStoreErrorCauseImportChanges:
+            return @"UbiquityStoreErrorCauseImportChanges";
+        case UbiquityStoreErrorCauseConfirmActiveStore:
+            return @"UbiquityStoreErrorCauseConfirmActiveStore";
+        case UbiquityStoreErrorCauseCorruptActiveStore:
+            return @"UbiquityStoreErrorCauseCorruptActiveStore";
+    }
+
+    return [NSString stringWithFormat:@"UnsupportedCause:%d", cause];
+}
+
 /** USMFilePresenter monitors a file for NSFilePresenter related changes. */
 @interface USMFilePresenter : NSObject<NSFilePresenter>
 
@@ -291,12 +319,17 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         NSLog( @"UbiquityStoreManager: %@", message );
 }
 
+- (void)logError:(NSString *)error cause:(UbiquityStoreErrorCause)cause context:(id)context {
+    [self error:[NSError errorWithDomain:NSCocoaErrorDomain code:0 userInfo:@{NSLocalizedFailureReasonErrorKey: error}]
+          cause:cause context:context];
+}
+
 - (void)error:(NSError *)error cause:(UbiquityStoreErrorCause)cause context:(id)context {
 
     if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:didEncounterError:cause:context:)])
         [self.delegate ubiquityStoreManager:self didEncounterError:error cause:cause context:context];
     else {
-        [self log:@"Error (cause:%u): %@", cause, error];
+        [self log:@"Error (cause:%@): %@", NSStringFromUSMCause(cause), error];
 
         if (context)
             [self log:@"    - Context   : %@", context];
@@ -537,16 +570,16 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
             // If we were performing explicit migration, try without in case the problem was caused by the migration store.
             if (wasExplicitMigration) {
-                [self log:@"Failed to load cloud store. Was performing explicit migration; will try without. (cause:%u, %@)",
-                          cause, context];
+                [self logError:@"Failed to load cloud store. Was performing explicit migration; will try without."
+                         cause:cause context:context];
                 [self reloadStore];
                 return;
             }
 
             // If we haven't attempted recovery yet (ie. delete the local store), try that first.
             if (!self.attemptingCloudRecovery) {
-                [self log:@"Failed to load cloud store. Attempting recovery by rebuilding from cloud content. (cause:%u, %@)",
-                          cause, context];
+                [self logError:@"Failed to load cloud store. Attempting recovery by rebuilding from cloud content. (cause:%u, %@)"
+                         cause:cause context:context];
                 self.attemptingCloudRecovery = YES;
                 [self deleteCloudStoreLocalOnly:YES];
                 return;
@@ -554,8 +587,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
             self.attemptingCloudRecovery = NO;
 
             // Failed to load regardless of recovery attempt.  Mark store as corrupt.
-            [self log:@"Failed to load cloud store. Marking cloud store as corrupt. Store will be unavailable. (cause:%u, %@)",
-                      cause, context];
+            [self logError:@"Failed to load cloud store. Marking cloud store as corrupt. Store will be unavailable."
+                     cause:cause context:context];
             [self markCloudStoreCorrupted];
         }
 
@@ -662,13 +695,14 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
             // If we were performing explicit migration, try without in case the problem was caused by the migration store.
             if (wasExplicitMigration) {
-                [self log:@"Failed to load local store. Was performing explicit migration; will try without. (cause:%u, %@)",
-                          cause, context];
+                [self logError:@"Failed to load local store. Was performing explicit migration; will try without."
+                         cause:cause context:context];
                 [self reloadStore];
                 return;
             }
 
-            [self log:@"Failed to load local store.  Store will be unavailable. (cause:%u, %@)", cause, context];
+            [self logError:@"Failed to load local store.  Store will be unavailable."
+                     cause:cause context:context];
         }
 
         NSPersistentStoreCoordinator *psc = self.persistentStoreCoordinator;
@@ -696,8 +730,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
     [self assertQueued];
 
+    *cause = UbiquityStoreErrorCauseNoError;
     NSError *error = nil;
-    __block NSError *error_ = nil;
     @try {
         switch (migrationStrategy) {
             case UbiquityStoreMigrationStrategyCopyEntities: {
@@ -723,33 +757,25 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
                 [self log:@"Seeding store using strategy: UbiquityStoreMigrationStrategyIOS"];
                 NSAssert(migrationStoreURL, @"Cannot migrate: No migration store specified.");
 
-                [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
-                        coordinateReadingItemAtURL:migrationStoreURL options:(NSFileCoordinatorReadingOptions)0
-                                  writingItemAtURL:targetStoreURL options:NSFileCoordinatorWritingForMerging
-                                             error:&error byAccessor:
-                        ^(NSURL *newReadingURL, NSURL *newWritingURL) {
-                            // Add the store to migrate.
-                            NSPersistentStore *migrationStore =
-                                    [self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType
-                                                                                  configuration:nil URL:newReadingURL
-                                                                                        options:migrationStoreOptions
-                                                                                          error:&error_];
-                            if (!migrationStore)
-                                [self error:error_ cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
-                                    context:IfOut(context, newReadingURL.path)];
+                // Add the store to migrate.
+                NSPersistentStore *migrationStore =
+                        [self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType
+                                                                      configuration:nil URL:migrationStoreURL
+                                                                            options:migrationStoreOptions
+                                                                              error:&error];
+                if (!migrationStore)
+                    [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
+                        context:IfOut(context, migrationStoreURL.path)];
 
-                            else if (![self.persistentStoreCoordinator migratePersistentStore:migrationStore
-                                                                                        toURL:newWritingURL
-                                                                                      options:targetStoreOptions
-                                                                                     withType:NSSQLiteStoreType
-                                                                                        error:&error_])
-                                [self error:error_ cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
-                                    context:IfOut(context, newWritingURL.path)];
-                            else
-                                *cause = UbiquityStoreErrorCauseNoError;
-                        }];
-                if (error)
-                    [self error:error cause:UbiquityStoreErrorCauseOpenSeedStore context:migrationStoreURL.path];
+                else if (![self.persistentStoreCoordinator migratePersistentStore:migrationStore
+                                                                            toURL:targetStoreURL
+                                                                          options:targetStoreOptions
+                                                                         withType:NSSQLiteStoreType
+                                                                            error:&error])
+                    [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
+                        context:IfOut(context, targetStoreURL.path)];
+                else
+                    *cause = UbiquityStoreErrorCauseNoError;
                 break;
             }
 
@@ -780,23 +806,12 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
                 NSAssert([self.persistentStoreCoordinator.persistentStores count] == 0, @"PSC should have no stores before trying to load one.");
 
                 // Load the target store.
-                [[[NSFileCoordinator alloc] initWithFilePresenter:nil] coordinateReadingItemAtURL:targetStoreURL
-                                                                                          options:(NSFileCoordinatorReadingOptions)0
-                                                                                            error:&error byAccessor:^(NSURL *newURL) {
-                    if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType
-                                                                       configuration:nil URL:newURL
-                                                                             options:targetStoreOptions
-                                                                               error:&error_])
-                        [self error:error_ cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
-                            context:IfOut(context, newURL.path)];
-                }];
-
-                if (error)
+                if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType
+                                                                   configuration:nil URL:targetStoreURL
+                                                                         options:targetStoreOptions
+                                                                           error:&error])
                     [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
                         context:IfOut(context, targetStoreURL.path)];
-                if ([self.persistentStoreCoordinator.persistentStores count])
-                    *cause = UbiquityStoreErrorCauseNoError;
-
                 break;
             }
         }
@@ -805,8 +820,6 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithCapacity:2];
         if (exception)
             [userInfo setObject:[(id<NSObject>)exception description] forKey:NSLocalizedFailureReasonErrorKey];
-        if (error_)
-            [userInfo setObject:error_ forKey:NSUnderlyingErrorKey];
         else if (error)
             [userInfo setObject:error forKey:NSUnderlyingErrorKey];
 
@@ -822,48 +835,36 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     [self assertQueued];
 
     NSError *error = nil;
-    __block NSError *error_ = nil;
-    __block BOOL success;
-
-    // Open migration store.
-    NSURL *migrationWorkStoreURL = migrationStoreURL;
-    if ([migrationStoreOptions[NSReadOnlyPersistentStoreOption] isEqual:@YES]) {
-        // Migration store is read-only, copy it to a writable store so we can support model migration if necessary.
-        migrationWorkStoreURL = [[[migrationStoreURL URLByDeletingLastPathComponent]
-                URLByAppendingPathComponent:@"CopyMigrationStore" isDirectory:NO] URLByAppendingPathExtension:@"sqlite"];
-        success = NO;
-        [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
-                coordinateReadingItemAtURL:migrationStoreURL options:(NSFileCoordinatorReadingOptions)0
-                          writingItemAtURL:migrationWorkStoreURL options:NSFileCoordinatorWritingForReplacing
-                                     error:&error byAccessor:^(NSURL *newReadingURL, NSURL *newWritingURL) {
-            success = [[NSFileManager defaultManager] copyItemAtURL:newReadingURL toURL:newWritingURL error:&error_];
-        }];
-        if (!success) {
-            [self error:IfOut(outError, error_? error_: error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
-                context:IfOut(context, migrationStoreURL.path)];
-            return NO;
-        }
-    }
+    NSURL *migrationWorkCopyStoreURL = nil;
     @try {
-        NSPersistentStoreCoordinator *migrationCoordinator =
-                [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
-        __block NSPersistentStore *migrationStore = nil;
+        // If the migration store is read-only, copy it so we can open it without read-only to migrate its model if necessary.
+        NSURL *migrationWorkStoreURL = migrationStoreURL;
+        if ([migrationStoreOptions[NSReadOnlyPersistentStoreOption] isEqual:@YES]) {
+            migrationWorkStoreURL = migrationWorkCopyStoreURL = [[[migrationStoreURL URLByDeletingLastPathComponent]
+                    URLByAppendingPathComponent:@"CopyMigrationStore" isDirectory:NO] URLByAppendingPathExtension:@"sqlite"];
+            [[NSFileManager defaultManager] removeItemAtURL:migrationWorkStoreURL error:nil];
+            if (![[NSFileManager defaultManager] copyItemAtURL:migrationStoreURL toURL:migrationWorkStoreURL error:&error]) {
+                [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
+                    context:IfOut(context, migrationStoreURL.path)];
+                return NO;
+            }
+        }
+
+        // Open migration store.
+        NSPersistentStoreCoordinator *migrationCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
         NSMutableDictionary *migrationWorkStoreOptions = [migrationStoreOptions mutableCopy];
         [migrationWorkStoreOptions addEntriesFromDictionary:@{
-                NSReadOnlyPersistentStoreOption              : @NO,
-                NSMigratePersistentStoresAutomaticallyOption : @YES,
-                NSInferMappingModelAutomaticallyOption       : @YES
+                NSReadOnlyPersistentStoreOption                 : @NO,
+                NSMigratePersistentStoresAutomaticallyOption    : @YES,
+                NSInferMappingModelAutomaticallyOption          : @YES,
+                NSPersistentStoreRemoveUbiquitousMetadataOption : @YES
         }];
-        [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
-                coordinateReadingItemAtURL:migrationWorkStoreURL options:(NSFileCoordinatorReadingOptions)0
-                                     error:&error byAccessor:^(NSURL *newURL) {
-            migrationStore = [migrationCoordinator addPersistentStoreWithType:NSSQLiteStoreType
-                                                                configuration:nil URL:newURL
-                                                                      options:migrationWorkStoreOptions
-                                                                        error:&error_];
-        }];
+        NSPersistentStore *migrationStore = [migrationCoordinator addPersistentStoreWithType:NSSQLiteStoreType
+                                                                               configuration:nil URL:migrationWorkStoreURL
+                                                                                     options:migrationWorkStoreOptions
+                                                                                       error:&error];
         if (!migrationStore) {
-            [self error:IfOut(outError, error_? error_: error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
+            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
                 context:IfOut(context, migrationWorkStoreURL.path)];
             return NO;
         }
@@ -872,23 +873,17 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         NSURL *targetStoreDirectoryURL = [targetStoreURL URLByDeletingLastPathComponent];
         if (![[NSFileManager defaultManager] createDirectoryAtURL:targetStoreDirectoryURL
                                       withIntermediateDirectories:YES attributes:nil error:&error]) {
-            [self error:IfOut(outError, error_? error_: error) cause:IfOut(cause, UbiquityStoreErrorCauseCreateStorePath)
+            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseCreateStorePath)
                 context:IfOut(context, targetStoreDirectoryURL.path)];
             return NO;
         }
-        NSPersistentStoreCoordinator *targetCoordinator =
-                [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
-        __block NSPersistentStore *targetStore = nil;
-        [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
-                coordinateReadingItemAtURL:targetStoreURL options:(NSFileCoordinatorReadingOptions)0
-                                     error:&error byAccessor:^(NSURL *newURL) {
-            targetStore = [targetCoordinator addPersistentStoreWithType:NSSQLiteStoreType
-                                                          configuration:nil URL:newURL
-                                                                options:targetStoreOptions
-                                                                  error:&error_];
-        }];
+        NSPersistentStoreCoordinator *targetCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
+        NSPersistentStore *targetStore = [targetCoordinator addPersistentStoreWithType:NSSQLiteStoreType
+                                                                         configuration:nil URL:targetStoreURL
+                                                                               options:targetStoreOptions
+                                                                                 error:&error];
         if (!targetStore) {
-            [self error:IfOut(outError, error_? error_: error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
+            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
                 context:IfOut(context, targetStoreURL.path)];
             return NO;
         }
@@ -935,14 +930,15 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
                 context:IfOut(context, migrationStoreURL.path)];
             migrationFailure = YES;
         }
-        if (![migrationCoordinator removePersistentStore:migrationStore error:&error_])
-            [self error:error_ cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, migrationStore)];
-        if (![targetCoordinator removePersistentStore:targetStore error:&error_])
-            [self error:error_ cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, targetStore)];
+        if (![migrationCoordinator removePersistentStore:migrationStore error:&error])
+            [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, migrationStore)];
+        if (![targetCoordinator removePersistentStore:targetStore error:&error])
+            [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, targetStore)];
         return !migrationFailure;
     }
     @finally {
-        [[NSFileManager defaultManager] removeItemAtURL:migrationWorkStoreURL error:nil];
+        if (migrationWorkCopyStoreURL)
+            [[NSFileManager defaultManager] removeItemAtURL:migrationWorkCopyStoreURL error:nil];
     }
 }
 
@@ -1111,7 +1107,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
     NSURL *cloudStoreURL = [self URLForCloudStore];
     if (![[NSFileManager defaultManager] fileExistsAtPath:cloudStoreURL.path]) {
-        [self log:@"Cannot migrate cloud to local: Cloud store doesn't exist."];
+        [self logError:@"Cannot migrate cloud to local: Cloud store doesn't exist."
+                 cause:UbiquityStoreErrorCauseSeedStore context:cloudStoreURL.path];
         return;
     }
 
@@ -1128,7 +1125,8 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
     NSURL *localStoreURL = self.localStoreURL;
     if (![[NSFileManager defaultManager] fileExistsAtPath:localStoreURL.path]) {
-        [self log:@"Cannot migrate local to cloud: Local store doesn't exist."];
+        [self logError:@"Cannot migrate local to cloud: Local store doesn't exist."
+                 cause:UbiquityStoreErrorCauseSeedStore context:localStoreURL.path];
         return;
     }
 
@@ -1161,19 +1159,10 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     [self clearStore];
 
     NSError *error = nil;
-    __block NSError *error_ = nil;
-    __block BOOL success = NO;
     self.migrationStoreURL = [[self URLForCloudStoreDirectory] URLByAppendingPathComponent:USMCloudStoreMigrationSource isDirectory:NO];
-    [[[NSFileCoordinator alloc] initWithFilePresenter:nil]
-            coordinateReadingItemAtURL:cloudStoreURL options:(NSFileCoordinatorReadingOptions)0
-                      writingItemAtURL:self.migrationStoreURL options:NSFileCoordinatorWritingForReplacing
-                                 error:&error byAccessor:
-            ^(NSURL *newReadingURL, NSURL *newWritingURL) {
-                [[NSFileManager defaultManager] removeItemAtURL:newWritingURL error:&error_];
-                success = [[NSFileManager defaultManager] moveItemAtURL:newReadingURL toURL:newWritingURL error :&error_];
-            }];
-    if (!success) {
-        [self error:error_? error_: error cause:UbiquityStoreErrorCauseSeedStore context:self.migrationStoreURL.path];
+    [[NSFileManager defaultManager] removeItemAtURL:self.migrationStoreURL error:nil];
+    if (![[NSFileManager defaultManager] moveItemAtURL:cloudStoreURL toURL:self.migrationStoreURL error :&error]) {
+        [self error:error cause:UbiquityStoreErrorCauseSeedStore context:self.migrationStoreURL.path];
         [self reloadStore];
         return;
     }
@@ -1270,37 +1259,15 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         return nil;
 
     NSError *error = nil;
-    __block NSString *activeUUID = nil;
-    [[[NSFileCoordinator alloc] initWithFilePresenter:self.storeUUIDPresenter]
-            coordinateReadingItemAtURL:storeUUIDFile options:0
-                                 error:&error byAccessor:
-            ^(NSURL *newURL) {
-                NSError *error_ = nil;
-                if (!(activeUUID = [[NSString alloc] initWithContentsOfURL:newURL encoding:NSASCIIStringEncoding error:&error_]))
-                    [self error:error_ cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
-            }];
-    if (![activeUUID length]) {
-        // Try without forcing saves.
-        [[[NSFileCoordinator alloc] initWithFilePresenter:self.storeUUIDPresenter]
-                coordinateReadingItemAtURL:storeUUIDFile options:NSFileCoordinatorReadingWithoutChanges
-                                     error:&error byAccessor:
-                ^(NSURL *newURL) {
-                    NSError *error_ = nil;
-                    if (!(activeUUID = [[NSString alloc] initWithContentsOfURL:newURL encoding:NSASCIIStringEncoding error:&error_]))
-                        [self error:error_ cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
-                }];
-        if (![activeUUID length]) {
-            // Try without coordinating.
-            if (!(activeUUID = [[NSString alloc] initWithContentsOfURL:storeUUIDFile encoding:NSASCIIStringEncoding error:&error])) {
-                // Failed to read StoreUUIDFile.  Without it, we cannot proceed.  Disable iCloud.
-                // Delete the file locally in case the user wants to try again.
-                [self error:error cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
-                self.cloudEnabled = NO;
-                [self removeItemAtURL:storeUUIDFile localOnly:YES];
-                @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Failed to obtain active store UUID."
-                                             userInfo:@{ NSUnderlyingErrorKey : error }];
-            }
-        }
+    NSString *activeUUID = [[NSString alloc] initWithContentsOfURL:storeUUIDFile encoding:NSASCIIStringEncoding error:&error];
+    if (!activeUUID || error) {
+        // Failed to read StoreUUIDFile.  Without it, we cannot proceed.  Disable iCloud.
+        // Delete the file locally in case the user wants to try again.
+        [self error:error cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
+        self.cloudEnabled = NO;
+        [self removeItemAtURL:storeUUIDFile localOnly:YES];
+        @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Failed to obtain active store UUID."
+                                     userInfo:@{ NSUnderlyingErrorKey : error? error: [NSNull null] }];
     }
 
     return activeUUID;
@@ -1340,14 +1307,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
     // Tell all other devices about our new cloud store's UUID.
     NSError *error = nil;
     NSURL *storeUUIDFile = [self URLForCloudStoreUUID];
-    [[[NSFileCoordinator alloc] initWithFilePresenter:self.storeUUIDPresenter]
-            coordinateWritingItemAtURL:storeUUIDFile options:NSFileCoordinatorWritingForMerging error:&error byAccessor:
-            ^(NSURL *newURL) {
-                NSError *error_ = nil;
-                if (![newStoreUUID writeToURL:newURL atomically:NO encoding:NSASCIIStringEncoding error:&error_])
-                    [self error:error_ cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
-            }];
-    if (error)
+    if (![newStoreUUID writeToURL:storeUUIDFile atomically:NO encoding:NSASCIIStringEncoding error:&error])
         [self error:error cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
 }
 
@@ -1475,7 +1435,23 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
  */
 - (void)ubiquityStoreManagerDidDetectCorruption:(NSNotification *)note {
 
-    [self log:@"Detected iCloud transaction log import failure: %@", note.object];
+    NSMutableArray *storeURLs = [note.object valueForKey:USMStoreURLsErrorKey];
+    if (storeURLs && (id)storeURLs != [NSNull null]) {
+        BOOL isForActiveStore = NO;
+        NSString *activeStoreUUID = self.storeUUID_ThreadSafe;
+        if (!activeStoreUUID)
+                // Import failure was not for our store: We don't even have a StoreUUID yet.
+            return;
+        for (NSURL *storeURL in storeURLs)
+            if ((isForActiveStore = ([[storeURL absoluteString] rangeOfString:activeStoreUUID].location != NSNotFound)))
+                break;
+        if (!isForActiveStore)
+                // Import failure was not for our store: Its store URL doesn't contain our StoreUUID.
+            return;
+    }
+
+    [self logError:@"Detected iCloud transaction log import failure."
+             cause:UbiquityStoreErrorCauseCorruptActiveStore context:note.object];
     [self markCloudStoreCorrupted];
 }
 
@@ -1489,14 +1465,7 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
 
     NSError *error = nil;
     NSURL *corruptedUUIDFile = [self URLForCloudCorruptedUUID];
-    [[[NSFileCoordinator alloc] initWithFilePresenter:self.corruptedUUIDPresenter]
-            coordinateWritingItemAtURL:corruptedUUIDFile options:NSFileCoordinatorWritingForMerging error:&error byAccessor:
-            ^(NSURL *newURL) {
-                NSError *error_ = nil;
-                if (![self.localCloudStoreCorruptedUUID writeToURL:newURL atomically:NO encoding:NSASCIIStringEncoding error:&error_])
-                    [self error:error_ cause:UbiquityStoreErrorCauseCorruptActiveStore context:corruptedUUIDFile.path];
-            }];
-    if (error)
+    if (![self.localCloudStoreCorruptedUUID writeToURL:corruptedUUIDFile atomically:NO encoding:NSASCIIStringEncoding error:&error])
         [self error:error cause:UbiquityStoreErrorCauseCorruptActiveStore context:corruptedUUIDFile.path];
 
     [self enqueue:^{ [self handleCloudContentCorruption]; }];
@@ -1516,15 +1485,9 @@ NSString *const USMCloudContentCorruptedUUID = @"CorruptedUUID";
         return NO;
 
     NSError *error = nil;
-    __block NSString *corruptedUUID = nil;
-    [[[NSFileCoordinator alloc] initWithFilePresenter:self.corruptedUUIDPresenter]
-            coordinateReadingItemAtURL:corruptedUUIDFile options:0
-                                 error:&error byAccessor:
-            ^(NSURL *newURL) {
-                NSError *error_ = nil;
-                if (!(corruptedUUID = [[NSString alloc] initWithContentsOfURL:newURL encoding:NSASCIIStringEncoding error:&error_]))
-                    [self error:error_ cause:UbiquityStoreErrorCauseCorruptActiveStore context:corruptedUUIDFile.path];
-            }];
+    NSString *corruptedUUID = [[NSString alloc] initWithContentsOfURL:corruptedUUIDFile encoding:NSASCIIStringEncoding error:&error];
+    if (!corruptedUUID || error)
+        [self error:error cause:UbiquityStoreErrorCauseCorruptActiveStore context:corruptedUUIDFile.path];
     if (![corruptedUUID isEqualToString:self.storeUUID])
             // Our store is not corrupt.
         return NO;

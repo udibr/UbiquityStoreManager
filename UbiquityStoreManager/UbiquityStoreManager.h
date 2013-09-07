@@ -63,6 +63,7 @@ typedef enum {
     UbiquityStoreErrorCauseConfirmActiveStore, // Error occurred while confirming a new active store.  context = The url that couldn't be created or updated to confirm the store.
     UbiquityStoreErrorCauseCorruptActiveStore, // Error occurred while handling store corruption.  context = The path that couldn't be read, created or updated.
 } UbiquityStoreErrorCause;
+extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause);
 
 typedef enum {
     UbiquityStoreMigrationStrategyCopyEntities, // Migrate by copying all entities from the active store to the new store.
