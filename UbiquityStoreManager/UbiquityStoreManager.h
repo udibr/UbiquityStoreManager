@@ -37,9 +37,19 @@
 #import <CoreData/CoreData.h>
 
 /**
+ * The store managed by the ubiquity manager's coordinator is about to change (eg. migrating or switching between iCloud and local).
+ *
+ * This notification is posted after the -ubiquityStoreManager:willLoadStoreIsCloud: message was posted to the delegate but before the PSC
+ * is invalidated.  You should clean up your UI and disconnect your MOC so that your app can function with no persistence until
+ * USMStoreDidChangeNotification is triggered.
+ */
+extern NSString *const USMStoreWillChangeNotification;
+/**
  * The store managed by the ubiquity manager's coordinator changed (eg. switching (no store) or switched to iCloud or local).
  *
- * This notification is posted after the -ubiquityStoreManager:willLoadStoreIsCloud: or -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: message was posted to the delegate.
+ * This notification is posted after the -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: message was posted to the delegate and
+ * the PSC has been reloaded.  Your app should refresh and re-validate its UI since persistence is now available again and the store might
+ * have changed significantly (eg. a new iCloud user might have become active).
  */
 extern NSString *const USMStoreDidChangeNotification;
 /**
@@ -108,6 +118,9 @@ typedef enum {
  * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.
  * If you have migration work to do, do it here.
  *
+ * The USMStoreWillChangeNotification notification is posted right after this method returns.
+ * You can use it as an alternative to this method for resetting your UI.
+ *
  * @param isCloudStore YES if the cloud store will be loaded.
  *                     NO if the local store will be loaded.
  */
@@ -123,6 +136,9 @@ typedef enum {
  * This method will be invoked from the main queue.
  *
  * Note the coordinator could change during the application's lifetime (you'll get a new -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: if this happens).
+ *
+ * The USMStoreDidChangeNotification notification is posted right after this method returns.
+ * You can use it as an alternative to this method for reloading your UI, however this method is the only way to get the PSC.
  *
  * @param isCloudStore YES if the cloud store was just loaded.
  *                     NO if the local store was just loaded.
@@ -449,17 +465,12 @@ typedef enum {
 - (NSURL *)URLForCloudStore;
 
 /**
- * @return URL to the directory where we put cloud store transaction logs for this app.
- */
-- (NSURL *)URLForCloudContentDirectory;
-
-/**
  * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @return URL to the active cloud store's transaction logs.
  */
-- (NSURL *)URLForCloudContent;
+- (id)URLForCloudContent;
 
 /**
  * @return URL to the directory where we put the local store database for this app.
@@ -474,9 +485,7 @@ typedef enum {
 #pragma mark - Utilities
 
 /**
- * Migrate a store to another by copying all metadata, entities and relationships from the migration store to the target store.
- *
- * This is the implementation of the UbiquityStoreMigrationStrategyCopyEntities strategy, in case you want it for your own migration code.
+ * Migrate entities from one store to another.
  *
  * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
@@ -485,14 +494,16 @@ typedef enum {
  * @param migrationStoreOptions The options to use when opening the migration store.  These should probably include NSReadOnlyPersistentStoreOption.
  * @param targetStoreURL The URL to the store file of the store into which the data should be copied.
  * @param targetStoreOptions The options to use when opening the target store.  If the target store is ubiquitous, these should include the appropriate ubiquity options.
+ * @param migrationStrategy The strategy to use for performing the migration.
  * @param outError When the migration fails, this will point to an NSError object that describes the failure.
  * @param cause When the migration fails, this will point to the cause of the problem which indicates when the failure occurred.
  * @param context See the documentation for the cause to determine what the context will be.
  *
  * @return NO if the migration was unsuccessful for any reason.  YES if the target store contains the migration store's entities.
  */
-- (BOOL)copyMigrateStore:(NSURL *)migrationStoreURL withOptions:(NSDictionary *)migrationStoreOptions
-                 toStore:(NSURL *)targetStoreURL withOptions:(NSDictionary *)targetStoreOptions
-                   error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context;
+- (BOOL)migrateStore:(NSURL *)migrationStoreURL withOptions:(NSDictionary *)migrationStoreOptions
+             toStore:(NSURL *)targetStoreURL withOptions:(NSDictionary *)targetStoreOptions
+            strategy:(UbiquityStoreMigrationStrategy)migrationStrategy
+               error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context;
 
 @end
