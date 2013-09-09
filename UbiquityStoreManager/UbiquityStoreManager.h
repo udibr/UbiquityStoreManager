@@ -468,7 +468,7 @@ typedef enum {
  * NOTE: Use this only from the persistence queue (see UbiquityStoreManagerDelegate method documentation).
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
- * @return URL to the active cloud store's transaction logs.
+ * @return Value to use for NSPersistentStoreUbiquitousContentURLKey for the active cloud store's transaction logs.
  */
 - (id)URLForCloudContent;
 
