@@ -357,6 +357,13 @@ typedef enum {
 #pragma mark - Maintenance
 
 /**
+ * Clear and re-open the store.
+ *
+ * This is rarely useful if you want to re-try opening the active store.  You usually won't need to invoke this manually.
+ */
+- (void)reloadStore;
+
+/**
  * Switch to the cloud store if not enabled already.
  *
  * If a cloud store already exists, the confirmationBlock will be triggered.
@@ -369,9 +376,14 @@ typedef enum {
  * NOTE: For your convenience, the confirmationBlock is executed ON THE MAIN THREAD.
  * Call the block you're given when you have determined the confirmation answer.  The store manager will be blocked until you make the call!
  *
+ * NOTE: If switching or migration fails, USM will try to revert to the previously active store.
+ *
  * @param confirmationBlock The block that will be triggered when an existing cloud store exists and confirmation is needed to either overwrite it with the local store or load it as-is.
+ *
+ * @return YES if the operation was invoked from the persistence queue and the store was successfully switched or migrated.
+ *         NO if the operation was asynchronous or the migration failed.
  */
-- (void)setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock;
+- (BOOL)setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock;
 
 /**
  * Switch to the local store if not enabled already.
@@ -386,16 +398,48 @@ typedef enum {
  * NOTE: For your convenience, the confirmationBlock is executed ON THE MAIN THREAD.
  * Call the block you're given when you have determined the confirmation answer.  The store manager will be blocked until you make the call!
  *
+ * NOTE: If switching or migration fails, USM will try to revert to the previously active store.
+ *
  * @param confirmationBlock The block that will be triggered when an existing local store exists and confirmation is needed to either overwrite it with the cloud store or load it as-is.
+ *
+ * @return YES if the operation was invoked from the persistence queue and the store was successfully switched or migrated.
+ *         NO if the operation was asynchronous or the migration failed.
  */
-- (void)setCloudDisabledAndOverwriteLocalWithCloudIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock;
+- (BOOL)setCloudDisabledAndOverwriteLocalWithCloudIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock;
 
 /**
- * Clear and re-open the store.
+ * This will delete the local store and migrate the cloud store to a new local store.  The device will subsequently load the new local store (disable cloud).
  *
- * This is rarely useful if you want to re-try opening the active store.  You usually won't need to invoke this manually.
+ * NOTE: If migration fails, USM will try to revert to the previously active store.
+ *
+ * @return YES if the operation was invoked from the persistence queue and the store was successfully migrated.
+ *         NO if the operation was asynchronous or the migration failed.
  */
-- (void)reloadStore;
+- (BOOL)migrateCloudToLocal;
+
+/**
+ * This will delete the cloud store and migrate the local store to a new cloud store.  The device will subsequently load the new cloud store (enable cloud).
+ *
+ * NOTE: If migration fails, USM will try to revert to the previously active store.
+ *
+ * @return YES if the operation was invoked from the persistence queue and the store was successfully migrated.
+ *         NO if the operation was asynchronous or the migration failed.
+ */
+- (BOOL)migrateLocalToCloud;
+
+/**
+ * This will delete the cloud content and recreate a new cloud store by seeding it with the current cloud store.
+ * Any cloud content and cloud store changes on other devices that are not present on this device's cloud store will be lost.
+ *
+ * NOTE: If migration fails, USM will try to revert to the previously active store.
+ *
+ * @param allowRebuildFromLocalStore If YES and the cloud content cannot be rebuilt from the cloud store, the local store will be used
+ * instead.  Beware: All former cloud content will be lost.
+ *
+ * @return YES if the operation was invoked from the persistence queue and the store was successfully migrated.
+ *         NO if the operation was asynchronous or the migration failed.
+ */
+- (BOOL)rebuildCloudContentFromCloudStoreOrLocalStore:(BOOL)allowRebuildFromLocalStore;
 
 /**
  * This will delete all the data from iCloud for this application.
@@ -419,25 +463,6 @@ typedef enum {
  * This will delete the local store.
  */
 - (void)deleteLocalStore;
-
-/**
- * This will delete the local store and migrate the cloud store to a new local store.  The device will subsequently load the new local store (disable cloud).
- */
-- (void)migrateCloudToLocal;
-
-/**
- * This will delete the cloud store and migrate the local store to a new cloud store.  The device will subsequently load the new cloud store (enable cloud).
- */
-- (void)migrateLocalToCloud;
-
-/**
- * This will delete the cloud content and recreate a new cloud store by seeding it with the current cloud store.
- * Any cloud content and cloud store changes on other devices that are not present on this device's cloud store will be lost.
- *
- * @param allowRebuildFromLocalStore If YES and the cloud content cannot be rebuilt from the cloud store, the local store will be used
-  * instead.  Beware: All former cloud content will be lost.
- */
-- (void)rebuildCloudContentFromCloudStoreOrLocalStore:(BOOL)allowRebuildFromLocalStore;
 
 #pragma mark - Information
 
