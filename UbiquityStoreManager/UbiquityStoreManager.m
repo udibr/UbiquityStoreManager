@@ -1361,7 +1361,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (![self ensureQueued:^{ [self migrateCloudToLocal]; }])
         return NO;
 
-    [self log:@"Will overwrite the local store with the cloud store."];
+    [self log:@"Will overwrite the local store with the cloud store (using cloud logs)."];
     self.migrationStoreURL = [self URLForCloudStore];
     [self deleteLocalStore];
 
@@ -1451,7 +1451,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         NSError *error = nil;
         self.migrationStoreURL = [[self URLForCloudStoreDirectory] URLByAppendingPathComponent:USMCloudStoreMigrationSource isDirectory:NO];
         [[NSFileManager defaultManager] removeItemAtURL:self.migrationStoreURL error:nil];
-        if (![[NSFileManager defaultManager] moveItemAtURL:cloudStoreURL toURL:self.migrationStoreURL error:&error]) {
+        if (![[NSFileManager defaultManager] copyItemAtURL:cloudStoreURL toURL:self.migrationStoreURL error:&error]) {
             [self error:error cause:UbiquityStoreErrorCauseSeedStore context:self.migrationStoreURL.path];
             // Migration failed, revert to previous store.
             [self revertMigration:cloudWasEnabled];
