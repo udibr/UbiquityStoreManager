@@ -516,15 +516,18 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
     if (!_persistentStoreCoordinator) {
         _persistentStoreCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(mergeChanges:)
-                                                     name:NSPersistentStoreDidImportUbiquitousContentChangesNotification
-                                                   object:_persistentStoreCoordinator];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willChange:)
-                                                     name:NSPersistentStoreCoordinatorStoresWillChangeNotification
-                                                   object:_persistentStoreCoordinator];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didChange:)
-                                                     name:NSPersistentStoreCoordinatorStoresDidChangeNotification
-                                                   object:_persistentStoreCoordinator];
+        if (&NSPersistentStoreDidImportUbiquitousContentChangesNotification)
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(mergeChanges:)
+                                                         name:NSPersistentStoreDidImportUbiquitousContentChangesNotification
+                                                       object:_persistentStoreCoordinator];
+        if (&NSPersistentStoreCoordinatorStoresWillChangeNotification)
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willChange:)
+                                                         name:NSPersistentStoreCoordinatorStoresWillChangeNotification
+                                                       object:_persistentStoreCoordinator];
+        if (&NSPersistentStoreCoordinatorStoresDidChangeNotification)
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didChange:)
+                                                         name:NSPersistentStoreCoordinatorStoresDidChangeNotification
+                                                       object:_persistentStoreCoordinator];
     }
 
     return _persistentStoreCoordinator;
@@ -932,11 +935,12 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
         // Ready, loading target store.
         if ([[self.persistentStoreCoordinator persistentStores] count] == 1 &&
-            [[[[[self.persistentStoreCoordinator persistentStores] firstObject] URL] lastPathComponent]
+            [[[[[self.persistentStoreCoordinator persistentStores] lastObject] URL] lastPathComponent]
                     isEqual:[targetStoreURL lastPathComponent]])
                 // Target store already loaded as a result of migration.
             return;
 
+        NSAssert([self.persistentStoreCoordinator.persistentStores count] == 0, @"PSC should have no stores before trying to load one.");
         [self log:@"Loading store: %@", [targetStoreURL lastPathComponent]];
         if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
                                                                      URL:targetStoreURL options:targetStoreOptions
