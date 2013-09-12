@@ -26,8 +26,12 @@
 #import "JRSwizzle.h"
 #import "NSError+UbiquityStoreManager.h"
 #import "NSURL+UbiquityStoreManager.h"
+
+
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
+
+
 #else
 #import <Cocoa/Cocoa.h>
 #endif
@@ -75,6 +79,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     return [NSString stringWithFormat:@"UnsupportedCause:%d", cause];
 }
 
+
 /** USMFilePresenter monitors a file for NSFilePresenter related changes. */
 @interface USMFilePresenter : NSObject<NSFilePresenter>
 
@@ -87,6 +92,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 @end
 
+
 /** USMFileContentPresenter extends USMFilePresenter to add metadata change monitoring. */
 @interface USMFileContentPresenter : USMFilePresenter
 
@@ -94,9 +100,11 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 @end
 
+
 /** USMStoreFilePresenter monitors our active store file. */
 @interface USMStoreFilePresenter : USMFilePresenter
 @end
+
 
 /** USMStoreFilePresenter monitors the file that contains the active store UUID.
  * Changes to this file mean the active store has changed and we need to load the new store.
@@ -104,11 +112,13 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 @interface USMStoreUUIDPresenter : USMFileContentPresenter
 @end
 
+
 /** USMStoreFilePresenter monitors the file that contains the corrupted store UUID.
  * Changes to this file mean a device has detected cloud corruption and we try to fix it.
  */
 @interface USMCorruptedUUIDPresenter : USMFileContentPresenter
 @end
+
 
 @interface UbiquityStoreManager()
 
@@ -131,6 +141,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 @property(nonatomic, strong) USMCorruptedUUIDPresenter *corruptedUUIDPresenter;
 @property(nonatomic, assign) BOOL cloudAvailable;
 @end
+
 
 @implementation UbiquityStoreManager {
     NSPersistentStoreCoordinator *_persistentStoreCoordinator;
@@ -633,7 +644,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         // Check if we need to seed the store by migrating another store into it.
         UbiquityStoreMigrationStrategy migrationStrategy = self.migrationStrategy;
         NSURL *migrationStoreURL = self.migrationStoreURL? self.migrationStoreURL: [self localStoreURL];
-        NSDictionary *migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
+        NSMutableDictionary *migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
         if (migrationStrategy == UbiquityStoreMigrationStrategyNone ||
             !migrationStoreOptions || ![self cloudSafeForSeeding] ||
             // We want to migrate from migrationStoreURL, check with application.
@@ -766,7 +777,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         // Check if we need to seed the store by migrating another store into it.
         NSURL *migrationStoreURL = self.migrationStoreURL;
         UbiquityStoreMigrationStrategy migrationStrategy = self.migrationStrategy;
-        NSDictionary *migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
+        NSMutableDictionary *migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
         if (migrationStrategy == UbiquityStoreMigrationStrategyNone ||
             !migrationStoreOptions ||
             // We want to migrate from migrationStoreURL, check with application.
@@ -849,18 +860,18 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
     NSString *cloudContentName = [self cloudContentNameForStoreURL:cloudStoreURL];
     NSURL *cloudStoreContentURL = [self URLForCloudContentForStoreURL:cloudStoreURL];
+    NSMutableDictionary *cloudStoreOptions = [@{
+            NSPersistentStoreUbiquitousContentNameKey    : cloudContentName,
+            NSPersistentStoreUbiquitousContentURLKey     : cloudStoreContentURL,
+            NSMigratePersistentStoresAutomaticallyOption : @YES,
+            NSInferMappingModelAutomaticallyOption       : @YES
+    } mutableCopy];
 
-    NSMutableDictionary *cloudStoreOptions;
     if (&NSPersistentStoreUbiquitousContainerIdentifierKey) {
         // iOS 7+
         // Cloud store loading options.
-        cloudStoreOptions = [@{
-                NSPersistentStoreUbiquitousContentNameKey         : cloudContentName,
-                NSPersistentStoreUbiquitousContentURLKey          : cloudStoreContentURL,
-                NSPersistentStoreUbiquitousContainerIdentifierKey : self.containerIdentifier,
-                NSMigratePersistentStoresAutomaticallyOption      : @YES,
-                NSInferMappingModelAutomaticallyOption            : @YES
-        } mutableCopy];
+        if (self.containerIdentifier)
+            cloudStoreOptions[NSPersistentStoreUbiquitousContainerIdentifierKey] = self.containerIdentifier;
     }
     else {
         // iOS 6
@@ -883,14 +894,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             [self log:@"Deleting cloud store: it has no cloud content."];
             [self removeItemAtURL:cloudStoreURL localOnly:NO];
         }
-
-        // Cloud store loading options.
-        cloudStoreOptions = [@{
-                NSPersistentStoreUbiquitousContentNameKey    : cloudContentName,
-                NSPersistentStoreUbiquitousContentURLKey     : cloudStoreContentURL,
-                NSMigratePersistentStoresAutomaticallyOption : @YES,
-                NSInferMappingModelAutomaticallyOption       : @YES
-        } mutableCopy];
     }
 
     [cloudStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
@@ -1959,6 +1962,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 @end
 
+
 @implementation USMStoreUUIDPresenter
 
 - (void)accommodatePresentedItemDeletionWithCompletionHandler:(void (^)(NSError *))completionHandler {
@@ -1972,6 +1976,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 }
 
 @end
+
 
 @implementation USMCorruptedUUIDPresenter
 
@@ -2023,6 +2028,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 }
 
 @end
+
 
 @implementation USMFileContentPresenter
 
