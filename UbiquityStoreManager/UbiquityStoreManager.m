@@ -513,6 +513,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 - (void)switchToCloudStoreWithOptions:(NSDictionary *)cloudStoreOptions {
 
     [self setStoreUUID:cloudStoreOptions[USMCloudUUIDKey] withCloudVersion:[cloudStoreOptions[USMCloudVersionKey] intValue]];
+
+    if (self.cloudEnabled)
+        [self reloadStore];
 }
 
 
@@ -1726,6 +1729,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
     // A new cloud store went live: clear any old cloud corruption.
     [self removeItemAtURL:[self URLForCloudCorruptedUUIDForVersion:cloudVersion] localOnly:NO];
+
+    // Remove all store UUIDs of supported cloud versions higher than the one we are setting.
+    for (int highCloudVersion = [self desiredCloudVersion]; highCloudVersion > cloudVersion; --highCloudVersion)
+        [self removeItemAtURL:[self URLForCloudStoreUUIDForVersion:highCloudVersion] localOnly:NO];
 
     // Tell all other devices about our new cloud store's UUID.
     NSError *error = nil;
