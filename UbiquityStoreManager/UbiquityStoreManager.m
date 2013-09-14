@@ -771,7 +771,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             // Give it some "time" to import any incoming transaction logs. This is important:
             // 1. To see if this store is a healthy candidate for content corruption rebuild.
             // 2. To make sure our store is up-to-date before we destroy the cloud content and rebuild it from the store.
-            dispatch_after( dispatch_time( DISPATCH_TIME_NOW, NSEC_PER_SEC * 20 ),
+            dispatch_after( dispatch_time( DISPATCH_TIME_NOW, NSEC_PER_SEC * 60 ),
                     dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0 ), ^{
                         [self enqueue:^{
                             // TODO: Make better sure the store is up to date with the cloud.
