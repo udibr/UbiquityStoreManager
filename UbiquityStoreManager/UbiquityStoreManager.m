@@ -27,10 +27,8 @@
 #import "NSError+UbiquityStoreManager.h"
 #import "NSURL+UbiquityStoreManager.h"
 
-
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
-
 
 #else
 #import <Cocoa/Cocoa.h>
@@ -42,7 +40,10 @@ NSString *const USMStoreWillChangeNotification = @"USMStoreWillChangeNotificatio
 NSString *const USMStoreDidChangeNotification = @"USMStoreDidChangeNotification";
 NSString *const USMStoreDidImportChangesNotification = @"USMStoreDidImportChangesNotification";
 
-NSString *const USMCloudEnabledKey = @"USMCloudEnabledKey"; // local: Whether the user wants the app on this device to use iCloud.
+NSString *const USMCloudEnabledKey = @"USMCloudEnabledKey";
+NSString *const USMCloudVersionKey = @"USMCloudVersionKey";
+NSString *const USMCloudCurrentKey = @"USMCloudCurrentKey";
+NSString *const USMCloudUUIDKey = @"USMCloudUUIDKey";
 
 NSString *const USMCloudContentName = @"UbiquityStore";
 NSString *const USMCloudStoreDirectory = @"CloudStore";
@@ -74,11 +75,12 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             return @"UbiquityStoreErrorCauseConfirmActiveStore";
         case UbiquityStoreErrorCauseCorruptActiveStore:
             return @"UbiquityStoreErrorCauseCorruptActiveStore";
+        case UbiquityStoreErrorCauseEnumerateStores:
+            return @"UbiquityStoreErrorCauseEnumerateStores";
     }
 
     return [NSString stringWithFormat:@"UnsupportedCause:%d", cause];
 }
-
 
 /** USMFilePresenter monitors a file for NSFilePresenter related changes. */
 @interface USMFilePresenter : NSObject<NSFilePresenter>
@@ -92,7 +94,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 @end
 
-
 /** USMFileContentPresenter extends USMFilePresenter to add metadata change monitoring. */
 @interface USMFileContentPresenter : USMFilePresenter
 
@@ -100,11 +101,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 @end
 
-
 /** USMStoreFilePresenter monitors our active store file. */
 @interface USMStoreFilePresenter : USMFilePresenter
 @end
-
 
 /** USMStoreFilePresenter monitors the file that contains the active store UUID.
  * Changes to this file mean the active store has changed and we need to load the new store.
@@ -112,13 +111,11 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 @interface USMStoreUUIDPresenter : USMFileContentPresenter
 @end
 
-
 /** USMStoreFilePresenter monitors the file that contains the corrupted store UUID.
  * Changes to this file mean a device has detected cloud corruption and we try to fix it.
  */
 @interface USMCorruptedUUIDPresenter : USMFileContentPresenter
 @end
-
 
 @interface UbiquityStoreManager()
 
@@ -141,7 +138,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 @property(nonatomic, strong) USMCorruptedUUIDPresenter *corruptedUUIDPresenter;
 @property(nonatomic, assign) BOOL cloudAvailable;
 @end
-
 
 @implementation UbiquityStoreManager {
     NSPersistentStoreCoordinator *_persistentStoreCoordinator;
@@ -240,7 +236,18 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
  */
 - (NSString *)cloudContentNameForStoreURL:(NSURL *)storeURL {
 
-    if ([self cloudVersionForStoreURL:storeURL] == 0)
+    int cloudVersion = [self cloudVersionForStoreURL:storeURL];
+    return [self cloudContentNameForStoreURL:storeURL andCloudVersion:cloudVersion];
+}
+
+/**
+ * Get the name of the cloud content for the given cloud store.
+ *
+ * For version 0 (iOS 6) this defaults to USMCloudContentName, for version 1 this is the StoreUUID.
+ */
+- (NSString *)cloudContentNameForStoreURL:(NSURL *)storeURL andCloudVersion:(int)cloudVersion {
+
+    if (cloudVersion == 0)
         return _contentName;
 
     return storeURL? [[storeURL URLByDeletingPathExtension] lastPathComponent]: self.storeUUID;
@@ -339,15 +346,26 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
  */
 - (NSURL *)URLForCloudStoreDirectory {
 
-    if (&NSPersistentStoreUbiquitousContainerIdentifierKey)
-            // On iOS7+ the store needs to be in the application container and is managed by the iCloud framework.
-        return [[self URLForApplicationContainer] URLByAppendingPathComponent:USMCloudStoreDirectory isDirectory:YES];
+    return [self URLForCloudStoreDirectoryForCloudVersion:[self desiredCloudVersion]];
+}
 
-    // We put the database in the ubiquity container with a .nosync extension (must not be synced by iCloud),
-    // so that its presence is tied closely to whether iCloud is enabled or not on the device
-    // and the user can delete the store by deleting his iCloud data for the app from Settings.
-    return [[[self URLForCloudContainer] URLByAppendingPathComponent:USMCloudStoreDirectory isDirectory:YES]
-            URLByAppendingPathExtension:@"nosync"];
+/**
+ * The directory where cloud store files are kept.
+ *
+ * For iOS 6, this is in a .nosync in the cloud container.  For iOS 7+ in the application sandbox.
+ */
+- (NSURL *)URLForCloudStoreDirectoryForCloudVersion:(int)version {
+
+    if (version == 0)
+            // iOS 6
+            // We put the database in the ubiquity container with a .nosync extension (must not be synced by iCloud),
+            // so that its presence is tied closely to whether iCloud is enabled or not on the device
+            // and the user can delete the store by deleting his iCloud data for the app from Settings.
+        return [[[self URLForCloudContainer] URLByAppendingPathComponent:USMCloudStoreDirectory isDirectory:YES]
+                URLByAppendingPathExtension:@"nosync"];
+
+    // On iOS7+ the store needs to be in the application container and is managed by the iCloud framework.
+    return [[self URLForApplicationContainer] URLByAppendingPathComponent:USMCloudStoreDirectory isDirectory:YES];
 }
 
 - (NSURL *)URLForCloudStore {
@@ -439,6 +457,62 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 - (NSURL *)URLForLocalStore {
 
     return self.localStoreURL;
+}
+
+- (NSDictionary *)enumerateCloudStores {
+
+    NSURL *cloudContentDirectory = [self URLForCloudContentDirectory];
+    NSError *error = nil;
+    NSArray *cloudContentURLs = [[NSFileManager defaultManager]
+            contentsOfDirectoryAtURL:cloudContentDirectory includingPropertiesForKeys:nil
+                             options:NSDirectoryEnumerationSkipsHiddenFiles error:&error];
+    if (!cloudContentURLs) {
+        [self error:error cause:UbiquityStoreErrorCauseEnumerateStores context:cloudContentDirectory.path];
+        return nil;
+    }
+
+    int maxCloudVersion = [self desiredCloudVersion];
+    NSMutableDictionary *cloudStores = [NSMutableDictionary dictionary];
+    for (NSURL *cloudContentURL in cloudContentURLs) {
+        BOOL isDirectory = NO;
+        if (![[NSFileManager defaultManager] fileExistsAtPath:cloudContentURL.path isDirectory:&isDirectory] && !isDirectory)
+            continue;
+
+        NSString *storeUUID = [cloudContentURL lastPathComponent];
+        NSURL *storeURL = [self URLForCloudStoreWithUUID:storeUUID];
+
+        NSMutableArray *cloudStoreOptionSets = [NSMutableArray array];
+        NSArray *peerURLs = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:cloudContentURL includingPropertiesForKeys:nil
+                                                                             options:NSDirectoryEnumerationSkipsHiddenFiles error:&error];
+        for (NSURL *peerURL in peerURLs) {
+            NSArray *cloudContentNameURLs = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:peerURL includingPropertiesForKeys:nil
+                                                                                             options:NSDirectoryEnumerationSkipsHiddenFiles
+                                                                                               error:&error];
+            for (NSURL *cloudContentNameURL in cloudContentNameURLs) {
+                NSMutableDictionary *cloudStoreOptions = [self optionsForCloudStoreURL:storeURL];
+                NSString *cloudContentName = [cloudContentNameURL lastPathComponent];
+
+                for (int cloudVersion = maxCloudVersion; cloudVersion >= 0; --cloudVersion)
+                    if ([cloudContentName isEqualToString:[self cloudContentNameForStoreURL:storeURL andCloudVersion:cloudVersion]]) {
+                        cloudStoreOptions[NSPersistentStoreUbiquitousContentNameKey] = cloudContentName;
+                        cloudStoreOptions[USMCloudVersionKey] = @(cloudVersion);
+                        cloudStoreOptions[USMCloudCurrentKey] = @([[self storeUUID_ThreadSafe] isEqualToString:storeUUID] &&
+                                                                  [self cloudVersionForStoreURL:storeURL] == cloudVersion);
+                        cloudStoreOptions[USMCloudUUIDKey] = storeUUID;
+                        [cloudStoreOptionSets addObject:cloudStoreOptions];
+                        break;
+                    }
+            }
+        }
+        [cloudStores setObject:cloudStoreOptionSets forKey:storeURL];
+    }
+
+    return cloudStores;
+}
+
+- (void)switchToCloudStoreWithOptions:(NSDictionary *)cloudStoreOptions {
+
+    [self setStoreUUID:cloudStoreOptions[USMCloudUUIDKey] withCloudVersion:[cloudStoreOptions[USMCloudVersionKey] intValue]];
 }
 
 
@@ -740,7 +814,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             else {
                 // Store failed to load.
                 // Make sure the store is still missing.
-                if (![[psc persistentStores] count])
+                if ([[psc persistentStores] count])
                     return;
 
                 // Notify the application.
@@ -832,7 +906,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             else {
                 // Store failed to load.
                 // Make sure the store is still missing.
-                if (![[psc persistentStores] count])
+                if ([[psc persistentStores] count])
                     return;
 
                 // Notify the application.
@@ -1551,7 +1625,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         return NO;
 
     // Copy cloud to local store?
-    BOOL overwriteLocal = ![[NSFileManager defaultManager] fileExistsAtPath:self.localStoreURL.path];
+    BOOL overwriteLocal = [[NSFileManager defaultManager] fileExistsAtPath:self.localStoreURL.path];
     if (overwriteLocal) {
         [self.persistentStoreCoordinator unlock];
         overwriteLocal = [self dispatchAndWaitFor:confirmationBlock];
@@ -1642,10 +1716,13 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (void)setStoreUUID:(NSString *)newStoreUUID {
 
-    if (![self ensureQueued:^{ [self setStoreUUID:newStoreUUID]; }])
-        return;
+    [self setStoreUUID:newStoreUUID withCloudVersion:[self desiredCloudVersion]];
+}
 
-    int cloudVersion = [self desiredCloudVersion];
+- (void)setStoreUUID:(NSString *)newStoreUUID withCloudVersion:(int)cloudVersion {
+
+    if (![self ensureQueued:^{ [self setStoreUUID:newStoreUUID withCloudVersion:cloudVersion]; }])
+        return;
 
     // A new cloud store went live: clear any old cloud corruption.
     [self removeItemAtURL:[self URLForCloudCorruptedUUIDForVersion:cloudVersion] localOnly:NO];
@@ -1962,7 +2039,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 @end
 
-
 @implementation USMStoreUUIDPresenter
 
 - (void)accommodatePresentedItemDeletionWithCompletionHandler:(void (^)(NSError *))completionHandler {
@@ -1976,7 +2052,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 }
 
 @end
-
 
 @implementation USMCorruptedUUIDPresenter
 
@@ -2028,7 +2103,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 }
 
 @end
-
 
 @implementation USMFileContentPresenter
 

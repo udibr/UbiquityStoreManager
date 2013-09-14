@@ -71,6 +71,14 @@ extern NSString *const USMStoreDidImportChangesNotification;
  * The boolean value in the NSUserDefaults at this key specifies whether iCloud is enabled on this device.
  */
 extern NSString *const USMCloudEnabledKey;
+/**
+ * The number in the cloud enumeration options dictionary that indicates the cloud version to use for loading the store.
+ */
+extern NSString *const USMCloudVersionKey;
+/**
+ * The boolean value in the cloud enumeration options dictionary specifies whether it is the currently active store in USM.
+ */
+extern NSString *const USMCloudCurrentKey;
 
 typedef enum {
     UbiquityStoreErrorCauseNoError, // Nothing went wrong.  There is no context.
@@ -83,6 +91,7 @@ typedef enum {
     UbiquityStoreErrorCauseImportChanges, // Error occurred while importing changes from the cloud into the application's context.  context = the DidImportUbiquitousContentChanges notification.
     UbiquityStoreErrorCauseConfirmActiveStore, // Error occurred while confirming a new active store.  context = The url that couldn't be created or updated to confirm the store.
     UbiquityStoreErrorCauseCorruptActiveStore, // Error occurred while handling store corruption.  context = The path that couldn't be read, created or updated.
+    UbiquityStoreErrorCauseEnumerateStores, // Error occurred while attempting to enumerate the known cloud stores.  context = The path that couldn't be enumerated.
 } UbiquityStoreErrorCause;
 extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause);
 
@@ -517,6 +526,21 @@ typedef enum {
  * @return URL to the local store's database.
  */
 - (NSURL *)URLForLocalStore;
+
+/**
+ * This method is designed for enumerating all the USM cloud stores that a user's container may contain.
+ * It allows you to provide an emergency store switcher to your app, allowing people to revert to old stores
+ * in case they unexpectedly switch to a new cloud store without having migrating the content they want.
+ *
+ * @return A dictionary that maps cloud store URLs to an array of options dictionaries that can be used to load them.
+ */
+- (NSDictionary *)enumerateCloudStores;
+
+/**
+ * This method is designed to allow you to manually switch to a different USM cloud store.  The options dictionary should be one
+ * given to you by -enumerateCloudStores.
+ */
+- (void)switchToCloudStoreWithOptions:(NSDictionary *)cloudStoreOptions;
 
 #pragma mark - Utilities
 
