@@ -699,7 +699,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self log:@"Will load cloud store."];
     [self assertQueued];
     [self clearStore];
-    [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = YES forKey:USMCloudEnabledKey];
+    
+    if (!self.cloudEnabled)
+        [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = YES forKey:USMCloudEnabledKey];
 
     // Mark store as healthy: opening the store now will tell us whether it's still corrupt.
     self.activeCloudStoreUUID = nil;
@@ -835,7 +837,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self log:@"Will load local store."];
     [self assertQueued];
     [self clearStore];
-    [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = NO forKey:USMCloudEnabledKey];
+    
+    if (self.cloudEnabled)
+        [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = NO forKey:USMCloudEnabledKey];
 
     id context = nil;
     NSError *error = nil;
@@ -1442,8 +1446,11 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (void)revertMigration:(BOOL)cloudWasEnabled {
 
+    [self log:@"Reverting migration attempt of %@, will %@ cloud.",
+                    [self.migrationStoreURL lastPathComponent], cloudWasEnabled? @"enable": @"disable"];
+    
     self.migrationStoreURL = nil;
-
+    
     if (cloudWasEnabled)
         [self tryLoadCloudStore];
     else
@@ -1587,6 +1594,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (![self ensureQueued:^{ [self setCloudEnabled:enabled]; }])
         return;
 
+    [self log:@"Switching cloud %@ -> %@", self.cloudWasEnabled? @"enabled": @"disabled", enabled? @"enabled": @"disabled"];
     [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];
     [self reloadStore];
 }
@@ -1608,6 +1616,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     }
 
     // Load cloud store (with or without migration).
+    [self log:@"Will enable cloud, %@ cloud store.", overwriteCloud? @"overwriting": @"using existing"];
     if (overwriteCloud)
         return [self migrateLocalToCloud];
 
@@ -1636,6 +1645,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     }
 
     // Load local store (with or without migration).
+    [self log:@"Will disable cloud, %@ local store.", overwriteLocal? @"overwriting": @"using existing"];
     if (overwriteLocal)
         return [self migrateCloudToLocal];
 
@@ -1685,6 +1695,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         // Failed to read StoreUUIDFile.  Without it, we cannot proceed.  Disable iCloud.
         // Delete the file locally in case the user wants to try again.
         [self error:error cause:UbiquityStoreErrorCauseOpenActiveStore context:storeUUIDFile.path];
+        [self log:@"%@ is unreadable.  Falling back to local store.", [storeUUIDFile lastPathComponent]];
         self.cloudEnabled = NO;
         [self removeItemAtURL:storeUUIDFile localOnly:YES];
         @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Failed to obtain active store UUID."
@@ -1731,12 +1742,16 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self removeItemAtURL:[self URLForCloudCorruptedUUIDForVersion:cloudVersion] localOnly:NO];
 
     // Remove all store UUIDs of supported cloud versions higher than the one we are setting.
-    for (int highCloudVersion = [self desiredCloudVersion]; highCloudVersion > cloudVersion; --highCloudVersion)
-        [self removeItemAtURL:[self URLForCloudStoreUUIDForVersion:highCloudVersion] localOnly:NO];
+    for (int highCloudVersion = [self desiredCloudVersion]; highCloudVersion > cloudVersion; --highCloudVersion) {
+        NSURL *storeUUIDFile = [self URLForCloudStoreUUIDForVersion:highCloudVersion];
+        [self log:@"Removing %@ (v%d) to force version down to %d.", [storeUUIDFile lastPathComponent], highCloudVersion, cloudVersion];
+        [self removeItemAtURL:storeUUIDFile localOnly:NO];
+    }
 
     // Tell all other devices about our new cloud store's UUID.
     NSError *error = nil;
     NSURL *storeUUIDFile = [self URLForCloudStoreUUIDForVersion:cloudVersion];
+    [self log:@"Writing new StoreUUID:%@ to %@ (v%d).", newStoreUUID, [storeUUIDFile lastPathComponent], cloudVersion];
     if (![newStoreUUID writeToURL:storeUUIDFile atomically:NO encoding:NSASCIIStringEncoding error:&error])
         [self error:error cause:UbiquityStoreErrorCauseConfirmActiveStore context:storeUUIDFile];
 }
@@ -1824,6 +1839,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (void)accommodateCloudDeletionWithCompletionHandler:(void (^)(NSError *))completionHandler {
 
+    [self log:@"Handling cloud deletion."];
+    
     // Clean up.
     [self       enqueue:^{
         if (self.cloudEnabled)
@@ -1840,8 +1857,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     // Recover.
     if ([self.delegate respondsToSelector:@selector(ubiquityStoreManagerHandleCloudContentDeletion:)])
         [self.delegate ubiquityStoreManagerHandleCloudContentDeletion:self];
-    else
+    else if (self.cloudEnabled) {
+        [self log:@"Recovering from cloud deletion.  Falling back to local store."];
         self.cloudEnabled = NO;
+    }
 }
 
 - (void)userDefaultsDidChange:(NSNotification *)note {
