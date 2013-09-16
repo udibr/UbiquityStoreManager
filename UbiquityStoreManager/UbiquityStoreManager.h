@@ -53,6 +53,8 @@
  * This notification is posted after the -ubiquityStoreManager:willLoadStoreIsCloud: message was posted to the delegate but before the PSC
  * is invalidated.  You should clean up your UI and disconnect your MOC so that your app can function with no persistence until
  * USMStoreDidChangeNotification is triggered.
+ *
+ * NOTE: This notification is posted from the persistence queue.  If you need to do UI work, you'll need to dispatch it to the main queue.
  */
 extern NSString *const USMStoreWillChangeNotification;
 /**
@@ -61,6 +63,8 @@ extern NSString *const USMStoreWillChangeNotification;
  * This notification is posted after the -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: message was posted to the delegate and
  * the PSC has been reloaded.  Your app should refresh and re-validate its UI since persistence is now available again and the store might
  * have changed significantly (eg. a new iCloud user might have become active).
+ *
+ * NOTE: This notification is posted from the persistence queue.  If you need to do UI work, you'll need to dispatch it to the main queue.
  */
 extern NSString *const USMStoreDidChangeNotification;
 /**
@@ -135,8 +139,8 @@ typedef enum {
  *         self.moc = nil;
  *     }];
  *
- * This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.
- * If you have migration work to do, do it here.
+ * NOTE: This method will be invoked from the persistence queue.  What you do here will block the persistence loading progress.
+ *       If you have migration work to do, do it here.
  *
  * The USMStoreWillChangeNotification notification is posted right after this method returns.
  * You can use it as an alternative to this method for resetting your UI.
@@ -153,9 +157,9 @@ typedef enum {
  *
  * You should probably create your main managed object context here.
  *
- * This method will be invoked from the main queue.
+ * NOTE: This method is invoked from the persistence queue.  If you need to do UI work, you'll need to dispatch it to the main queue.
  *
- * Note the coordinator could change during the application's lifetime (you'll get a new -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: if this happens).
+ * NOTE: The coordinator could change again during the application's lifetime (you'll get a new -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud: if this happens).
  *
  * The USMStoreDidChangeNotification notification is posted right after this method returns.
  * You can use it as an alternative to this method for reloading your UI, however this method is the only way to get the PSC.
