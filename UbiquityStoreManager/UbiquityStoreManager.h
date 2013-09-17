@@ -85,7 +85,7 @@ extern NSString *const USMCloudVersionKey;
 extern NSString *const USMCloudCurrentKey;
 
 typedef enum {
-    UbiquityStoreErrorCauseNoError, // Nothing went wrong.  There is no context.
+    UbiquityStoreErrorCauseNoError = noErr, // Nothing went wrong.  There is no context.
     UbiquityStoreErrorCauseDeleteStore, // Error occurred while deleting the store file or its transaction logs.  context = the path of the store.
     UbiquityStoreErrorCauseCreateStorePath, // Error occurred while creating the path where the store needs to be saved.  context = the path of the store.
     UbiquityStoreErrorCauseClearStore, // Error occurred while removing a store from the coordinator.  context = the store.
@@ -100,7 +100,7 @@ typedef enum {
 extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause);
 
 typedef enum {
-    UbiquityStoreMigrationStrategyCopyEntities, // Migrate by copying all entities from the active store to the new store.
+    UbiquityStoreMigrationStrategyCopyEntities = 1, // Migrate by copying all entities from the active store to the new store.
     UbiquityStoreMigrationStrategyIOS, // Migrate using iOS' migration routines (bugged for: cloud -> local on iOS 6.0, local -> cloud on iOS 6.1).
     UbiquityStoreMigrationStrategyManual, // Migrate using the delegate's -ubiquityStoreManager:manuallyMigrateStore:toStore:.
     UbiquityStoreMigrationStrategyNone, // Don't migrate, just create an empty destination store.
@@ -555,10 +555,14 @@ typedef enum {
  *       You probably want -ubiquityStoreManager:willLoadStoreIsCloud:
  *
  * @param migrationStoreURL The URL to the store file of the store from which to copy data.
- * @param migrationStoreOptions The options to use when opening the migration store.  These should probably include NSReadOnlyPersistentStoreOption.
+ * @param migrationStoreOptions The options to use when opening the migration store.  If they include NSReadOnlyPersistentStoreOption and
+ * the store file is accessible, we'll migrate a copy of the store to allow store model migration if necessary.
+ * May be nil, in which case we'll determine default options depending on what the migrationStoreURL is.
  * @param targetStoreURL The URL to the store file of the store into which the data should be copied.
- * @param targetStoreOptions The options to use when opening the target store.  If the target store is ubiquitous, these should include the appropriate ubiquity options.
+ * @param targetStoreOptions The options to use when opening the target store.
+ * May be nil, in which case we'll determine default options depending on what the targetStoreURL is.
  * @param migrationStrategy The strategy to use for performing the migration.
+ * May be 0, in which case we'll use USM's default migration strategy.
  * @param outError When the migration fails, this will point to an NSError object that describes the failure.
  * @param cause When the migration fails, this will point to the cause of the problem which indicates when the failure occurred.
  * @param context See the documentation for the cause to determine what the context will be.

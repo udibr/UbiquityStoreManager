@@ -805,21 +805,11 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self clearStore];
 
     id context = nil;
-    NSError *error = nil;
     UbiquityStoreErrorCause cause = UbiquityStoreErrorCauseNoError;
     @try {
-        // Make sure local store directory exists.
         NSURL *localStoreURL = [self URLForLocalStore];
-        NSURL *localStoreDirectoryURL = [self URLForLocalStoreDirectory];
-        if (![[NSFileManager defaultManager] createDirectoryAtURL:localStoreDirectoryURL
-                                      withIntermediateDirectories:YES attributes:nil error:&error]) {
-            [self error:error cause:cause = UbiquityStoreErrorCauseCreateStorePath context:context = localStoreDirectoryURL.path];
-            return NO;
-        }
-
-        // If the local store doesn't exist yet and a migrationStore is set, copy it.
-        // Check if we need to seed the store by migrating another store into it.
         NSURL *migrationStoreURL = self.migrationStoreURL;
+
         UbiquityStoreMigrationStrategy migrationStrategy = self.migrationStrategy;
         NSMutableDictionary *migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
         if (migrationStrategy == UbiquityStoreMigrationStrategyNone ||
@@ -950,16 +940,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     }
     else {
         // iOS 6
-        // Create the path to the cloud store and content if it doesn't exist yet.
-        NSError *error = nil;
-        NSURL *cloudStoreDirectoryURL = [self URLForCloudStoreDirectory];
-        if (![[NSFileManager defaultManager] createDirectoryAtURL:cloudStoreDirectoryURL
-                                      withIntermediateDirectories:YES attributes:nil error:&error])
-            [self error:error cause:UbiquityStoreErrorCauseCreateStorePath context:cloudStoreDirectoryURL.path];
-        if (![[NSFileManager defaultManager] createDirectoryAtURL:cloudStoreContentURL
-                                      withIntermediateDirectories:YES attributes:nil error:&error])
-            [self error:error cause:UbiquityStoreErrorCauseCreateStorePath context:cloudStoreContentURL.path];
-
         // Clean up the cloud store if the cloud content got deleted.
         BOOL storeExists = [[NSFileManager defaultManager] fileExistsAtPath:cloudStoreURL.path];
         BOOL storeContentExists = [[NSFileManager defaultManager] startDownloadingUbiquitousItemAtURL:cloudStoreContentURL error:nil];
@@ -980,24 +960,25 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (!migrationStoreURL)
         return nil;
 
-    NSMutableDictionary *migrationStoreOptions = [self.additionalStoreOptions mutableCopy];
+    NSMutableDictionary *migrationStoreOptions;
     if ([[migrationStoreURL lastPathComponent] isEqualToString:USMCloudStoreMigrationSource]) {
         // Migration store is a migration cloud store.  We want to treat it as a local store.
-        [migrationStoreOptions addEntriesFromDictionary:@{
+        migrationStoreOptions = [@{
                 NSMigratePersistentStoresAutomaticallyOption : @YES,
                 NSInferMappingModelAutomaticallyOption       : @YES
-        }];
+        } mutableCopy];
         if (&NSPersistentStoreRemoveUbiquitousMetadataOption)
-            [migrationStoreOptions setObject:@YES forKey:NSPersistentStoreRemoveUbiquitousMetadataOption];
+            migrationStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
+        [migrationStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
     }
     else if ([[migrationStoreURL absoluteString] rangeOfString:USMCloudStoreDirectory].location != NSNotFound)
             // Migration store is a regular cloud store.
-        migrationStoreOptions = [[self optionsForCloudStoreURL:migrationStoreURL] mutableCopy];
-    else if ([[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path])
-            // Migration store is something else.
-        [migrationStoreOptions addEntriesFromDictionary:@{
-                NSReadOnlyPersistentStoreOption : @YES,
-        }];
+        migrationStoreOptions = [self optionsForCloudStoreURL:migrationStoreURL];
+    else if ([[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path]) {
+        // Migration store is something else.
+        migrationStoreOptions = [self optionsForLocalStore];
+        migrationStoreOptions[NSReadOnlyPersistentStoreOption] = @YES;
+    }
     else
             // Migration store doesn't exist and is not a cloud store.
         return nil;
@@ -1047,9 +1028,61 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             strategy:(UbiquityStoreMigrationStrategy)migrationStrategy
                error:(__autoreleasing NSError **)outError cause:(UbiquityStoreErrorCause *)cause context:(__autoreleasing id *)context {
 
+    if (!migrationStoreOptions)
+        migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
+    if (migrationStrategy == 0)
+        migrationStrategy = self.migrationStrategy;
+
     NSError *error = nil;
+    NSURL *migrationWorkStoreURL = nil;
     @try {
         IfOut(cause, UbiquityStoreErrorCauseNoError);
+
+        // If the migration store is read-only, copy it so we can open it without read-only to migrate its model if necessary.
+        if ([migrationStoreOptions[NSReadOnlyPersistentStoreOption] isEqual:@YES] &&
+            [[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path]) {
+            NSMutableDictionary *migrationWorkStoreOptions = [migrationStoreOptions mutableCopy];
+            migrationWorkStoreURL = [[[migrationStoreURL URLByDeletingLastPathComponent]
+                    URLByAppendingPathComponent:@"CopyMigrationStore" isDirectory:NO] URLByAppendingPathExtension:@"sqlite"];
+            [[NSFileManager defaultManager] removeItemAtURL:migrationWorkStoreURL error:nil];
+            if (![[NSFileManager defaultManager] copyItemAtURL:migrationStoreURL toURL:migrationWorkStoreURL error:&error]) {
+                [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
+                    context:IfOut(context, migrationStoreURL.path)];
+                return NO;
+            }
+            migrationWorkStoreOptions[NSReadOnlyPersistentStoreOption] = @NO;
+            migrationWorkStoreOptions[NSMigratePersistentStoresAutomaticallyOption] = @YES;
+            migrationWorkStoreOptions[NSInferMappingModelAutomaticallyOption] = @YES;
+            migrationStoreOptions = migrationWorkStoreOptions;
+            migrationStoreURL = migrationWorkStoreURL;
+        }
+
+        // If the migration store is not opened ubiquitously, remove its ubiquitous metadata during migration.
+        if (&NSPersistentStoreRemoveUbiquitousMetadataOption && !targetStoreOptions[NSPersistentStoreUbiquitousContentNameKey]) {
+            NSMutableDictionary *migrationWorkStoreOptions = [migrationStoreOptions mutableCopy];
+            migrationWorkStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
+            migrationStoreOptions = migrationWorkStoreOptions;
+        }
+
+        // Make sure the store directories exist.
+        NSURL *migrationStoreDirectoryURL = [migrationStoreURL URLByDeletingLastPathComponent];
+        if (migrationStoreDirectoryURL &&
+            ![[NSFileManager defaultManager] createDirectoryAtURL:migrationStoreDirectoryURL
+                                      withIntermediateDirectories:YES attributes:nil error:&error]) {
+            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseCreateStorePath)
+                context:IfOut(context, migrationStoreDirectoryURL.path)];
+            return NO;
+        }
+        NSURL *targetStoreDirectoryURL = [targetStoreURL URLByDeletingLastPathComponent];
+        if (targetStoreDirectoryURL &&
+            ![[NSFileManager defaultManager] createDirectoryAtURL:targetStoreDirectoryURL
+                                      withIntermediateDirectories:YES attributes:nil error:&error]) {
+            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseCreateStorePath)
+                context:IfOut(context, targetStoreDirectoryURL.path)];
+            return NO;
+        }
+
+        // Migrate using the desired strategy.
         switch (migrationStrategy) {
             case UbiquityStoreMigrationStrategyCopyEntities: {
                 [self log:@"Seeding store (strategy: UbiquityStoreMigrationStrategyCopyEntities): %@ -> %@",
@@ -1123,6 +1156,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         [self logError:[(id<NSObject>)exception description]
                  cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore) context:IfOut(context, exception)];
     }
+    @finally {
+        if (migrationWorkStoreURL)
+            [[NSFileManager defaultManager] removeItemAtURL:migrationWorkStoreURL error:nil];
+    }
 
     return NO;
 }
@@ -1133,111 +1170,76 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
     [self assertQueued];
 
+    // Open migration store.
     NSError *error = nil;
-    NSURL *migrationWorkCopyStoreURL = nil;
-    @try {
-        // If the migration store is read-only, copy it so we can open it without read-only to migrate its model if necessary.
-        NSURL *migrationWorkStoreURL = migrationStoreURL;
-        NSMutableDictionary *migrationWorkStoreOptions = [migrationStoreOptions mutableCopy];
-        if ([migrationWorkStoreOptions[NSReadOnlyPersistentStoreOption] isEqual:@YES] &&
-            [[NSFileManager defaultManager] fileExistsAtPath:migrationStoreURL.path]) {
-            migrationWorkStoreURL = migrationWorkCopyStoreURL = [[[migrationStoreURL URLByDeletingLastPathComponent]
-                    URLByAppendingPathComponent:@"CopyMigrationStore" isDirectory:NO] URLByAppendingPathExtension:@"sqlite"];
-            [[NSFileManager defaultManager] removeItemAtURL:migrationWorkStoreURL error:nil];
-            if (![[NSFileManager defaultManager] copyItemAtURL:migrationStoreURL toURL:migrationWorkStoreURL error:&error]) {
-                [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
-                    context:IfOut(context, migrationStoreURL.path)];
-                return NO;
-            }
-            migrationWorkStoreOptions[NSReadOnlyPersistentStoreOption] = @NO;
-            migrationWorkStoreOptions[NSMigratePersistentStoresAutomaticallyOption] = @YES;
-            migrationWorkStoreOptions[NSInferMappingModelAutomaticallyOption] = @YES;
-        }
+    NSPersistentStoreCoordinator *migrationCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
+    NSPersistentStore *migrationStore = [migrationCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
+                                                                                     URL:migrationStoreURL options:migrationStoreOptions
+                                                                                   error:&error];
+    if (!migrationStore) {
+        [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
+            context:IfOut(context, migrationStoreURL.path)];
+        return NO;
+    }
 
-        // Open migration store.
-        NSPersistentStoreCoordinator *migrationCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
-        if (&NSPersistentStoreRemoveUbiquitousMetadataOption && !targetStoreOptions[NSPersistentStoreUbiquitousContentNameKey])
-            migrationWorkStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
-        NSPersistentStore *migrationStore = [migrationCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
-                                                                                         URL:migrationWorkStoreURL
-                                                                                     options:migrationWorkStoreOptions
-                                                                                       error:&error];
-        if (!migrationStore) {
-            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenSeedStore)
-                context:IfOut(context, migrationWorkStoreURL.path)];
-            return NO;
-        }
+    // Open target store.
+    NSPersistentStoreCoordinator *targetCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
+    NSPersistentStore *targetStore = [targetCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
+                                                                               URL:targetStoreURL options:targetStoreOptions
+                                                                             error:&error];
+    if (!targetStore) {
+        [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
+            context:IfOut(context, targetStoreURL.path)];
+        return NO;
+    }
 
-        // Open target store.
-        NSURL *targetStoreDirectoryURL = [targetStoreURL URLByDeletingLastPathComponent];
-        if (![[NSFileManager defaultManager] createDirectoryAtURL:targetStoreDirectoryURL
-                                      withIntermediateDirectories:YES attributes:nil error:&error]) {
-            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseCreateStorePath)
-                context:IfOut(context, targetStoreDirectoryURL.path)];
-            return NO;
-        }
-        NSPersistentStoreCoordinator *targetCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model];
-        NSPersistentStore *targetStore = [targetCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
-                                                                                   URL:targetStoreURL options:targetStoreOptions
-                                                                                 error:&error];
-        if (!targetStore) {
-            [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
-                context:IfOut(context, targetStoreURL.path)];
-            return NO;
-        }
+    // Set up contexts for them.
+    NSManagedObjectContext *migrationContext = [NSManagedObjectContext new];
+    NSManagedObjectContext *targetContext = [NSManagedObjectContext new];
+    migrationContext.persistentStoreCoordinator = migrationCoordinator;
+    targetContext.persistentStoreCoordinator = targetCoordinator;
 
-        // Set up contexts for them.
-        NSManagedObjectContext *migrationContext = [NSManagedObjectContext new];
-        NSManagedObjectContext *targetContext = [NSManagedObjectContext new];
-        migrationContext.persistentStoreCoordinator = migrationCoordinator;
-        targetContext.persistentStoreCoordinator = targetCoordinator;
+    // Migrate metadata.
+    NSMutableDictionary *metadata = [[migrationCoordinator metadataForPersistentStore:migrationStore] mutableCopy];
+    for (NSString *key in [[metadata allKeys] copy])
+        if ([key hasPrefix:@"com.apple.coredata.ubiquity"])
+                // Don't migrate ubiquitous metadata.
+            [metadata removeObjectForKey:key];
+    [metadata addEntriesFromDictionary:[targetCoordinator metadataForPersistentStore:targetStore]];
+    [targetCoordinator setMetadata:metadata forPersistentStore:targetStore];
 
-        // Migrate metadata.
-        NSMutableDictionary *metadata = [[migrationCoordinator metadataForPersistentStore:migrationStore] mutableCopy];
-        for (NSString *key in [[metadata allKeys] copy])
-            if ([key hasPrefix:@"com.apple.coredata.ubiquity"])
-                    // Don't migrate ubiquitous metadata.
-                [metadata removeObjectForKey:key];
-        [metadata addEntriesFromDictionary:[targetCoordinator metadataForPersistentStore:targetStore]];
-        [targetCoordinator setMetadata:metadata forPersistentStore:targetStore];
+    // Migrate entities.
+    BOOL migrationFailure = NO;
+    NSMutableDictionary *migratedIDsBySourceID = [[NSMutableDictionary alloc] initWithCapacity:500];
+    for (NSEntityDescription *entity in self.model.entities) {
+        NSFetchRequest *fetch = [NSFetchRequest new];
+        fetch.entity = entity;
+        fetch.fetchBatchSize = 500;
+        fetch.relationshipKeyPathsForPrefetching = entity.relationshipsByName.allKeys;
 
-        // Migrate entities.
-        BOOL migrationFailure = NO;
-        NSMutableDictionary *migratedIDsBySourceID = [[NSMutableDictionary alloc] initWithCapacity:500];
-        for (NSEntityDescription *entity in self.model.entities) {
-            NSFetchRequest *fetch = [NSFetchRequest new];
-            fetch.entity = entity;
-            fetch.fetchBatchSize = 500;
-            fetch.relationshipKeyPathsForPrefetching = entity.relationshipsByName.allKeys;
-
-            NSArray *localObjects = [migrationContext executeFetchRequest:fetch error:&error];
-            if (!localObjects) {
-                [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
-                    context:IfOut(context, migrationStoreURL.path)];
-                migrationFailure = YES;
-                break;
-            }
-
-            for (NSManagedObject *localObject in localObjects)
-                [self copyMigrateObject:localObject toContext:targetContext usingMigrationCache:migratedIDsBySourceID];
-        }
-
-        // Save migrated entities and unload the stores.
-        if (!migrationFailure && ![targetContext save:&error]) {
+        NSArray *localObjects = [migrationContext executeFetchRequest:fetch error:&error];
+        if (!localObjects) {
             [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
                 context:IfOut(context, migrationStoreURL.path)];
             migrationFailure = YES;
+            break;
         }
-        if (![migrationCoordinator removePersistentStore:migrationStore error:&error])
-            [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, migrationStore)];
-        if (![targetCoordinator removePersistentStore:targetStore error:&error])
-            [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, targetStore)];
-        return !migrationFailure;
+
+        for (NSManagedObject *localObject in localObjects)
+            [self copyMigrateObject:localObject toContext:targetContext usingMigrationCache:migratedIDsBySourceID];
     }
-    @finally {
-        if (migrationWorkCopyStoreURL)
-            [[NSFileManager defaultManager] removeItemAtURL:migrationWorkCopyStoreURL error:nil];
+
+    // Save migrated entities and unload the stores.
+    if (!migrationFailure && ![targetContext save:&error]) {
+        [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
+            context:IfOut(context, migrationStoreURL.path)];
+        migrationFailure = YES;
     }
+    if (![migrationCoordinator removePersistentStore:migrationStore error:&error])
+        [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, migrationStore)];
+    if (![targetCoordinator removePersistentStore:targetStore error:&error])
+        [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseClearStore) context:IfOut(context, targetStore)];
+    return !migrationFailure;
 }
 
 - (id)copyMigrateObject:(NSManagedObject *)sourceObject toContext:(NSManagedObjectContext *)destinationContext
