@@ -858,8 +858,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (void)fireBeginLoadingLogReason:(NSString *)reason {
 
-    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue)
+    if ([NSOperationQueue currentQueue] != self.persistentStorageQueue) {
         [self enqueue:^{ [self fireBeginLoadingLogReason:reason]; } waitUntilFinished:YES lock:NO];
+        return;
+    }
 
     [self log:@"%@.  Notifying application to reset its UI.", reason];
     if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:willLoadStoreIsCloud:)])
