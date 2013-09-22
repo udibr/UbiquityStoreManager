@@ -2017,7 +2017,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (void)storesDidChange:(NSNotification *)note {
 
-    [self fireFinishedLoadingLogReason:@"Stores changed" cause:UbiquityStoreErrorCauseNoError context:note];
+    if ([((NSPersistentStoreCoordinator *)note.object).persistentStores count])
+        [self fireFinishedLoadingLogReason:@"Stores changed" cause:UbiquityStoreErrorCauseNoError context:note];
 }
 
 @end
