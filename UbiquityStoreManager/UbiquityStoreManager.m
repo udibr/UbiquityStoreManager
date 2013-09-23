@@ -178,7 +178,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     _additionalStoreOptions = additionalStoreOptions == nil? [NSDictionary dictionary]: additionalStoreOptions;
 
     // Private vars.
-    _currentIdentityToken = [[NSFileManager defaultManager] ubiquityIdentityToken];
+    _currentIdentityToken = [[NSFileManager defaultManager] respondsToSelector:@selector(ubiquityIdentityToken)]?
+                            [[NSFileManager defaultManager] ubiquityIdentityToken]: nil;
     _cloudAvailable = (_currentIdentityToken != nil);
     _migrationStrategy = &NSPersistentStoreUbiquitousContainerIdentifierKey?
                          UbiquityStoreMigrationStrategyIOS: UbiquityStoreMigrationStrategyCopyEntities;
@@ -187,9 +188,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     _persistentStorageQueue.maxConcurrentOperationCount = 1;
 
     // Observe application events.
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(cloudStoreChanged:)
-                                                 name:NSUbiquityIdentityDidChangeNotification
-                                               object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(ubiquityStoreManagerDidDetectCorruption:)
                                                  name:UbiquityManagedStoreDidDetectCorruptionNotification
                                                object:nil];
@@ -205,6 +203,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                                                  name:NSApplicationDidBecomeActiveNotification
                                                object:nil];
 #endif
+    if (&NSUbiquityIdentityDidChangeNotification)
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(cloudStoreChanged:)
+                                                     name:NSUbiquityIdentityDidChangeNotification
+                                                   object:nil];
 
     [self reloadStore];
 
@@ -1863,7 +1865,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 - (void)applicationDidBecomeActive:(NSNotification *)note {
 
     // Check for iCloud identity changes (ie. user logs into another iCloud account).
-    if (![self.currentIdentityToken isEqual:[[NSFileManager defaultManager] ubiquityIdentityToken]])
+    if ([[NSFileManager defaultManager] respondsToSelector:@selector(ubiquityIdentityToken)] &&
+        ![self.currentIdentityToken isEqual:[[NSFileManager defaultManager] ubiquityIdentityToken]])
         [self cloudStoreChanged:nil];
 }
 
