@@ -1061,9 +1061,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
         // If the migration store is not opened ubiquitously, remove its ubiquitous metadata during migration.
         if (&NSPersistentStoreRemoveUbiquitousMetadataOption && !targetStoreOptions[NSPersistentStoreUbiquitousContentNameKey]) {
-            NSMutableDictionary *migrationWorkStoreOptions = [migrationStoreOptions mutableCopy];
-            migrationWorkStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
-            migrationStoreOptions = migrationWorkStoreOptions;
+            NSMutableDictionary *mutableTargetStoreOptions = [targetStoreOptions mutableCopy];
+            mutableTargetStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
+            targetStoreOptions = mutableTargetStoreOptions;
         }
 
         // Make sure the store directories exist.
