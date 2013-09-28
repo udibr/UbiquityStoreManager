@@ -175,7 +175,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                 URLByAppendingPathExtension:@"sqlite"];
     _localStoreURL = localStoreURL;
     _containerIdentifier = containerIdentifier;
-    _additionalStoreOptions = additionalStoreOptions == nil? [NSDictionary dictionary]: additionalStoreOptions;
+    _additionalStoreOptions = additionalStoreOptions == nil? @{}: additionalStoreOptions;
 
     // Private vars.
     _currentIdentityToken = [[NSFileManager defaultManager] respondsToSelector:@selector(ubiquityIdentityToken)]?
@@ -507,7 +507,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                     }
             }
         }
-        [cloudStores setObject:cloudStoreOptionSets forKey:storeURL];
+        cloudStores[storeURL] = cloudStoreOptionSets;
     }
 
     return cloudStores;
@@ -552,10 +552,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
         if (context)
             [self log:@"    - Context   : %@", context];
-        NSError *underlyingError = [[error userInfo] objectForKey:NSUnderlyingErrorKey];
+        NSError *underlyingError = [error userInfo][NSUnderlyingErrorKey];
         if (underlyingError)
             [self log:@"    - Underlying: %@", underlyingError];
-        NSArray *detailedErrors = [[error userInfo] objectForKey:NSDetailedErrorsKey];
+        NSArray *detailedErrors = [error userInfo][NSDetailedErrorsKey];
         for (NSError *detailedError in detailedErrors)
             [self log:@"    - Detail    : %@", detailedError];
     }
@@ -895,10 +895,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             if (self.cloudEnabled &&
                 ((&NSPersistentStoreUbiquitousTransitionTypeKey &&
                   [context isKindOfClass:[NSNotification class]] &&
-                  [[((NSNotification *)context).userInfo objectForKey:NSPersistentStoreUbiquitousTransitionTypeKey] unsignedIntegerValue] ==
+                  [((NSNotification *)context).userInfo[NSPersistentStoreUbiquitousTransitionTypeKey] unsignedIntegerValue] ==
                   NSPersistentStoreUbiquitousTransitionTypeInitialImportCompleted) ||
-                 ([[((NSPersistentStore *)[self.persistentStoreCoordinator.persistentStores lastObject]).metadata
-                         objectForKey:@"com.apple.coredata.ubiquity.ubiquitized"] boolValue])))
+                 ([((NSPersistentStore *)[self.persistentStoreCoordinator.persistentStores lastObject])
+                         .metadata[@"com.apple.coredata.ubiquity.ubiquitized"] boolValue])))
                 dispatch_after( dispatch_time( DISPATCH_TIME_NOW, NSEC_PER_SEC * 30 ),
                         dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0 ), ^{
                             [self enqueue:^{
@@ -1260,7 +1260,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (!sourceObject)
         return nil;
 
-    NSManagedObjectID *destinationObjectID = [migratedIDsBySourceID objectForKey:sourceObject.objectID];
+    NSManagedObjectID *destinationObjectID = migratedIDsBySourceID[sourceObject.objectID];
     if (destinationObjectID)
         return [destinationContext objectWithID:destinationObjectID];
 
@@ -1269,7 +1269,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         NSEntityDescription *entity = sourceObject.entity;
         NSManagedObject *destinationObject = [NSEntityDescription insertNewObjectForEntityForName:entity.name
                                                                            inManagedObjectContext:destinationContext];
-        [migratedIDsBySourceID setObject:destinationObject.objectID forKey:sourceObject.objectID];
+        migratedIDsBySourceID[sourceObject.objectID] = destinationObject.objectID;
 
         // Set attributes
         for (NSString *key in entity.attributesByName.allKeys)
@@ -1397,7 +1397,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         if (localOnly) {
             // Rebuild store from content.
             NSMutableDictionary *rebuildOptions = [options mutableCopy];
-            [rebuildOptions setObject:@YES forKey:NSPersistentStoreRebuildFromUbiquitousContentOption];
+            rebuildOptions[NSPersistentStoreRebuildFromUbiquitousContentOption] = @YES;
             if (![[[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:self.model]
                     addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
                                            URL:cloudStoreURL options:rebuildOptions error:&error]) {
@@ -1506,7 +1506,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         return NO;
     }
 
-    if (oldStoreUUID)
+    NSString *newStoreUUID = self.storeUUID_ThreadSafe;
+    if (newStoreUUID && oldStoreUUID && ![newStoreUUID isEqualToString:oldStoreUUID])
         [self deleteCloudStoreUUID:oldStoreUUID localOnly:NO];
 
     return YES;
@@ -1573,7 +1574,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         }
 
         NSString *newStoreUUID = self.storeUUID_ThreadSafe;
-        if (newStoreUUID && ![newStoreUUID isEqualToString:oldStoreUUID])
+        if (newStoreUUID && oldStoreUUID && ![newStoreUUID isEqualToString:oldStoreUUID])
             [self deleteCloudStoreUUID:oldStoreUUID localOnly:NO];
 
         return YES;
