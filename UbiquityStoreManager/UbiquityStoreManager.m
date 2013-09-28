@@ -739,7 +739,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:shouldMigrateFromStoreURL:toStoreURL:isCloud:)] &&
              ![self.delegate ubiquityStoreManager:self
                         shouldMigrateFromStoreURL:migrationStoreURL toStoreURL:cloudStoreURL
-                                          isCloud:NO])) {
+                                          isCloud:YES])) {
             [self log:@"[DEBUG] Will NOT migrate to cloud store from: %@ (strategy: %d).", [migrationStoreURL lastPathComponent], migrationStrategy];
             migrationStrategy = UbiquityStoreMigrationStrategyNone;
             migrationStoreURL = nil;

@@ -40,6 +40,8 @@ To get started with `UbiquityStoreManager`, all you need to do is instantiate it
                           additionalStoreOptions:nil
                                         delegate:self]
 
+The `nil` parameters can all be used to customize `UbiquityStoreManager`'s behavior.  For instance, if you already have a local store, you can pass its URL as the localStoreURL.
+
 And then wait in your delegate for the manager to bring up your persistence layer:
 
     - (void)ubiquityStoreManager:(UbiquityStoreManager *)manager willLoadStoreIsCloud:(BOOL)isCloudStore {
