@@ -728,8 +728,11 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
         // Check if we need to seed the store by migrating another store into it.
         UbiquityStoreMigrationStrategy migrationStrategy = self.migrationStrategy;
+        [self log:@"[DEBUG] migrationStoreURL: %@", self.migrationStoreURL];
         NSURL *migrationStoreURL = self.migrationStoreURL? self.migrationStoreURL: [self localStoreURL];
         NSMutableDictionary *migrationStoreOptions = [self optionsForMigrationStoreURL:migrationStoreURL];
+        [self log:@"[DEBUG] migrationStoreOptions: %@", migrationStoreOptions];
+        [self log:@"[DEBUG] cloudSafeForSeeding: %d", [self cloudSafeForSeeding]];
         if (migrationStrategy == UbiquityStoreMigrationStrategyNone ||
             !migrationStoreOptions || ![self cloudSafeForSeeding] ||
             // We want to migrate from migrationStoreURL, check with application.
@@ -737,6 +740,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
              ![self.delegate ubiquityStoreManager:self
                         shouldMigrateFromStoreURL:migrationStoreURL toStoreURL:cloudStoreURL
                                           isCloud:NO])) {
+            [self log:@"[DEBUG] Will NOT migrate to cloud store from: %@ (strategy: %d).", [migrationStoreURL lastPathComponent], migrationStrategy];
             migrationStrategy = UbiquityStoreMigrationStrategyNone;
             migrationStoreURL = nil;
         }
@@ -898,8 +902,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                 dispatch_after( dispatch_time( DISPATCH_TIME_NOW, NSEC_PER_SEC * 30 ),
                         dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0 ), ^{
                             [self enqueue:^{
-                                if ([self cloudVersionForStoreURL:nil] != [self desiredCloudVersion])
+                                if ([self cloudVersionForStoreURL:nil] != [self desiredCloudVersion]) {
+                                    [self log:@"Cloud store is healthy but version is below desired.  Will rebuild to upgrade."];
                                     [self rebuildCloudContentFromCloudStoreOrLocalStore:NO];
+                                }
 
                                 else if (self.activeCloudStoreUUID && ![self.localCloudStoreCorruptedUUID isEqualToString:self.storeUUID])
                                     [self handleCloudContentCorruption];
@@ -1566,7 +1572,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             return NO;
         }
 
-        if (oldStoreUUID)
+        NSString *newStoreUUID = self.storeUUID_ThreadSafe;
+        if (newStoreUUID && ![newStoreUUID isEqualToString:oldStoreUUID])
             [self deleteCloudStoreUUID:oldStoreUUID localOnly:NO];
 
         return YES;
@@ -1930,7 +1937,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (!corruptedUUID || error)
         [self error:error cause:UbiquityStoreErrorCauseCorruptActiveStore context:corruptedUUIDFile.path];
     if (![corruptedUUID isEqualToString:self.storeUUID])
-            // Our store is not corrupt.
+            // Active store is not corrupt.
         return NO;
 
     // Unload the cloud store if it's loaded and corrupt.
@@ -1942,7 +1949,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     }
 
     // Notify the delegate of corruption.
-    [self log:@"Cloud content corruption detected (store %@).", localStoreCorrupted? @"corrupt": @"healthy"];
+    [self log:@"Cloud content corruption detected (device store is %@).", localStoreCorrupted? @"corrupt": @"healthy"];
     BOOL defaultStrategy = YES;
     if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:handleCloudContentCorruptionWithHealthyStore:)])
         defaultStrategy = ![self.delegate ubiquityStoreManager:self handleCloudContentCorruptionWithHealthyStore:!localStoreCorrupted];
