@@ -13,7 +13,7 @@
 
 @interface Event : NSManagedObject
 
-@property (nonatomic) NSTimeInterval timeStamp;
-@property (nonatomic, strong) User *user;
+@property(nonatomic) NSTimeInterval timeStamp;
+@property(nonatomic, strong) User *user;
 
 @end
