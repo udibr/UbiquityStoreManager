@@ -12,7 +12,9 @@
 #import "User.h"
 #import "Event.h"
 
-@implementation MasterViewController
+@implementation MasterViewController {
+    NSFetchRequest *fetchRequest;
+}
 
 - (IBAction)setiCloudState:(id)sender {
 
@@ -34,6 +36,10 @@
     if (!(self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil]))
         return nil;
 
+    fetchRequest = [[NSFetchRequest alloc] initWithEntityName:NSStringFromClass( [Event class] )];
+    fetchRequest.sortDescriptors = @[ [[NSSortDescriptor alloc] initWithKey:@"timeStamp" ascending:NO] ];
+    fetchRequest.fetchBatchSize = 20;
+
     self.title = @"Master";
     if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
         self.clearsSelectionOnViewWillAppear = NO;
@@ -54,16 +60,42 @@
 
     [self reloadFetchedResults:nil];
     // STEP 3 - Handle USMStoreDidChangeNotification to update the UI.
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(resetFetchedResults:)
+                                                 name:USMStoreWillChangeNotification
+                                               object:[AppDelegate sharedAppDelegate].ubiquityStoreManager];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloadFetchedResults:)
                                                  name:USMStoreDidChangeNotification
                                                object:[AppDelegate sharedAppDelegate].ubiquityStoreManager];
 }
 
+- (void)resetFetchedResults:(NSNotification*)note {
+
+    // MOC has just been invalidated by USM's delegate (in our case, AppDelegate).
+    // We need to make the UI reflect that persistence is unavailable.
+    // Here, we're in the USM persistence thread.  To do UI stuff, we need to dispatch to the main queue.
+    dispatch_async( dispatch_get_main_queue(), ^{
+        [self.iCloudSwitch setEnabled:NO];
+        [self.iCloudSwitch setOn:[AppDelegate sharedAppDelegate].ubiquityStoreManager.cloudEnabled animated:YES];
+        [self.storeLoadingActivity startAnimating];
+
+        // Our custom -fetchedResultsController will handle our MOC having become unavailable.
+        [self.tableView reloadData];
+    } );
+}
+
 - (void)reloadFetchedResults:(NSNotification*)note {
 
-    _fetchedResultsController = nil;
-    [self fetchedResultsController];
-    [self.tableView reloadData];
+    // MOC has just been recreated by USM's delegate (in our case, AppDelegate).
+    // We need to make the UI reflect that persistence is now available again, we should re-fetch state in case it changed.
+    // Here, we're in the USM persistence thread.  To do UI stuff, we need to dispatch to the main queue.
+    dispatch_async( dispatch_get_main_queue(), ^{
+        [self.iCloudSwitch setEnabled:[AppDelegate sharedAppDelegate].ubiquityStoreManager.cloudAvailable];
+        [self.iCloudSwitch setOn:[AppDelegate sharedAppDelegate].ubiquityStoreManager.cloudEnabled animated:YES];
+        [self.storeLoadingActivity stopAnimating];
+        
+        // Our custom -fetchedResultsController will handle getting the latest data from the new MOC.
+        [self.tableView reloadData];
+    } );
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation {
@@ -82,7 +114,8 @@
     [context performBlockAndWait:^{
         Event *event = [NSEntityDescription insertNewObjectForEntityForName:NSStringFromClass( [Event class] )
                                                      inManagedObjectContext:context];
-        event.timeStamp = [NSDate date].timeIntervalSinceReferenceDate;
+        event.creater = [UIDevice currentDevice].name;
+        event.timeStamp = [NSDate date];
         event.user = user;
 
         // Save the context.
@@ -105,6 +138,12 @@
     return [sectionInfo numberOfObjects];
 }
 
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+
+    id<NSFetchedResultsSectionInfo> sectionInfo = [[self.fetchedResultsController sections] objectAtIndex:section];
+    return [sectionInfo name];
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 
     static NSString *CellIdentifier = @"Cell";
@@ -117,7 +156,7 @@
     }
 
     Event *event = [self.fetchedResultsController objectAtIndexPath:indexPath];
-    cell.textLabel.text = [NSString stringWithFormat:@"%.2f", event.timeStamp];
+    cell.textLabel.text = [event.timeStamp description];
 
     return cell;
 }
@@ -172,20 +211,19 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 - (NSFetchedResultsController *)fetchedResultsController {
 
     NSManagedObjectContext *context = [AppDelegate sharedAppDelegate].managedObjectContext;
+
+    // If we have no MOC, persistence is currently offline.  No fetching.
     if (!context)
         return nil;
+    
+    // If our MOC changed, invalidate the fetchedResultsController so it gets recreated.
+    if (context != _fetchedResultsController.managedObjectContext)
+        _fetchedResultsController = nil;
 
+    // If we have no fetchedResultsController, create one and perform a fetch to get the latest managed objects.
     if (!_fetchedResultsController) {
-        NSFetchRequest *fetchRequest = [[NSFetchRequest alloc] init];
-        NSEntityDescription *entity = [NSEntityDescription entityForName:NSStringFromClass( [Event class] ) inManagedObjectContext:context];
-        [fetchRequest setEntity:entity];
-        [fetchRequest setFetchBatchSize:20];
-        [fetchRequest setSortDescriptors:@[ [[NSSortDescriptor alloc] initWithKey:@"timeStamp" ascending:NO] ]];
-
-        // Edit the section name key path and cache name if appropriate.
-        // nil for section name key path means "no sections".
         _fetchedResultsController = [[NSFetchedResultsController alloc] initWithFetchRequest:fetchRequest managedObjectContext:context
-                                                                          sectionNameKeyPath:nil cacheName:@"Master"];
+                                                                          sectionNameKeyPath:@"creater" cacheName:@"Master"];
         _fetchedResultsController.delegate = self;
 
         [context performBlockAndWait:^{
@@ -200,6 +238,9 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 - (void)controllerDidChangeContent:(NSFetchedResultsController *)controller {
 
+    // NSFetchedResultsController signaled a change to the fetch request's results.
+    // We may have added/deleted an object or imported changes.
+    // Reload the table to fetch the latest objects from the fetchedResultsController.
     [self.tableView reloadData];
 }
 

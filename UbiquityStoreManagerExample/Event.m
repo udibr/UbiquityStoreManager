@@ -11,6 +11,7 @@
 
 @implementation Event
 
+@dynamic creater;
 @dynamic timeStamp;
 @dynamic user;
 

@@ -153,13 +153,8 @@
 
         [managedObjectContext reset];
     }];
-    _managedObjectContext = nil;
 
-    dispatch_async( dispatch_get_main_queue(), ^{
-        [masterViewController.iCloudSwitch setEnabled:NO];
-        [masterViewController.iCloudSwitch setOn:isCloudStore animated:YES];
-        [masterViewController.storeLoadingActivity startAnimating];
-    } );
+    _managedObjectContext = nil;
 }
 
 - (void)ubiquityStoreManager:(UbiquityStoreManager *)manager didLoadStoreForCoordinator:(NSPersistentStoreCoordinator *)coordinator
@@ -171,10 +166,6 @@
     _managedObjectContext = moc;
 
     dispatch_async( dispatch_get_main_queue(), ^{
-        [masterViewController.iCloudSwitch setEnabled:YES];
-        [masterViewController.iCloudSwitch setOn:isCloudStore animated:YES];
-        [masterViewController.storeLoadingActivity stopAnimating];
-
         [cloudContentCorruptedAlert dismissWithClickedButtonIndex:[cloudContentCorruptedAlert cancelButtonIndex] animated:YES];
         [handleCloudContentWarningAlert dismissWithClickedButtonIndex:[handleCloudContentWarningAlert cancelButtonIndex] animated:YES];
     } );
