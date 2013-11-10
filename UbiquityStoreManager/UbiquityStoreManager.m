@@ -742,10 +742,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self clearStore];
     self.activeCloudStoreUUID = nil;
 
-    // Start watching our store UUID.
-    [self.storeUUIDPresenter = [[USMStoreUUIDPresenter alloc] initWithUSM:self] start];
-    [self.corruptedUUIDPresenter = [[USMCorruptedUUIDPresenter alloc] initWithUSM:self] start];
-
     // Begin loading the cloud store 'atomically'.
     __block id context = nil;
     __block UbiquityStoreErrorCause cause = UbiquityStoreErrorCauseNoError;
@@ -992,7 +988,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             // We have a cloud store but no cloud content.  The cloud content was deleted:
             // The existing store cannot sync anymore and needs to be recreated.
             [self log:@"Deleting cloud store: it has no cloud content."];
-            [self removeItemAtURL:cloudStoreURL localOnly:NO];
+            [[NSFileManager defaultManager] removeItemAtURL:cloudStoreURL error:nil];
         }
     }
 
@@ -1139,7 +1135,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                                     toStore:targetStoreURL withOptions:targetStoreOptions
                                       error:&error cause:cause context:context]) {
                     IfOut(outError, error);
-                    [self removeItemAtURL:targetStoreURL localOnly:NO];
+                    [[NSFileManager defaultManager] removeItemAtURL:targetStoreURL error:nil];
                     return NO;
                 }
 
@@ -1167,7 +1163,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                                                                     withType:NSSQLiteStoreType error:&error]) {
                     [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
                         context:IfOut(context, targetStoreURL.path)];
-                    [self removeItemAtURL:targetStoreURL localOnly:NO];
+                    [[NSFileManager defaultManager] removeItemAtURL:targetStoreURL error:nil];
                     return NO;
                 }
 
@@ -1186,7 +1182,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                     // Handle failure by cleaning up the target store.
                     [self error:IfOut(outError, error) cause:IfOut(cause, UbiquityStoreErrorCauseSeedStore)
                         context:IfOut(context, migrationStoreURL.path)];
-                    [self removeItemAtURL:targetStoreURL localOnly:NO];
+                    [[NSFileManager defaultManager] removeItemAtURL:targetStoreURL error:nil];
                     return NO;
                 }
 
@@ -1927,20 +1923,27 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         if (self.cloudEnabled)
             [self clearStore];
 
-        [self removeItemAtURL:[self URLForCloudStore] localOnly:NO];
+        NSError *error = nil;
+        NSURL *cloudStoreURL = [self URLForCloudStore];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:[cloudStoreURL path]] &&
+            ![[NSFileManager defaultManager] removeItemAtURL:cloudStoreURL error:&error])
+            [self error:error cause:UbiquityStoreErrorCauseDeleteStore context:[cloudStoreURL path]];
+        [self removeItemAtURL:cloudStoreURL localOnly:NO];
         [self.storeUUIDPresenter.coordinator coordinateWritingItemAtURL:[self URLForCloudStoreUUID]
                                                                 options:NSFileCoordinatorWritingForDeleting
                                                                   error:nil byAccessor:^(NSURL *newURL) {
-            NSError *error = nil;
-            if (![[NSFileManager defaultManager] removeItemAtURL:newURL error:&error])
-                [self error:error cause:UbiquityStoreErrorCauseDeleteStore context:[newURL path]];
+            NSError *error_ = nil;
+            if ([[NSFileManager defaultManager] fileExistsAtPath:[newURL path]] &&
+                ![[NSFileManager defaultManager] removeItemAtURL:newURL error:&error_])
+                [self error:error_ cause:UbiquityStoreErrorCauseDeleteStore context:[newURL path]];
         }];
         [self.corruptedUUIDPresenter.coordinator coordinateWritingItemAtURL:[self URLForCloudCorruptedUUID]
                                                                     options:NSFileCoordinatorWritingForDeleting
                                                                       error:nil byAccessor:^(NSURL *newURL) {
-            NSError *error = nil;
-            if (![[NSFileManager defaultManager] removeItemAtURL:newURL error:&error])
-                [self error:error cause:UbiquityStoreErrorCauseDeleteStore context:[newURL path]];
+            NSError *error_ = nil;
+            if ([[NSFileManager defaultManager] fileExistsAtPath:[newURL path]] &&
+                ![[NSFileManager defaultManager] removeItemAtURL:newURL error:&error_])
+                [self error:error_ cause:UbiquityStoreErrorCauseDeleteStore context:[newURL path]];
         }];
     } waitUntilFinished:YES];
 
