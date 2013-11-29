@@ -747,8 +747,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     __block UbiquityStoreErrorCause cause = UbiquityStoreErrorCauseNoError;
     NSError *coordinationError = nil;
     [self.storeUUIDPresenter.coordinator
-            coordinateWritingItemAtURL:[self URLForCloudStoreUUID] options:NSFileCoordinatorWritingForMerging
-                                 error:&coordinationError byAccessor:^(NSURL *newURL) {
+            coordinateReadingItemAtURL:[self URLForCloudStoreUUID] options:0
+                      writingItemAtURL:[self URLForCloudStoreUUID] options:NSFileCoordinatorWritingForMerging
+                                 error:&coordinationError byAccessor:^(NSURL *newReadingURL, NSURL *newWritingURL) {
         @try {
             self.storeUUIDCoordinated = YES;
             NSURL *cloudStoreURL = [self URLForCloudStore];
