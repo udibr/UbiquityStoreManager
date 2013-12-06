@@ -4,13 +4,13 @@
 <dict>
 	<key>com.apple.developer.ubiquity-container-identifiers</key>
 	<array>
-		<string>$(TeamIdentifierPrefix)com.lyndir.lhunath.UbiquityStoreManagerExample</string>
+		<string>$(TeamIdentifierPrefix)com.symfi.UbiquityStoreManagerExample</string>
 	</array>
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
-	<string>$(TeamIdentifierPrefix)com.lyndir.lhunath.UbiquityStoreManagerExample</string>
+	<string>$(TeamIdentifierPrefix)com.symfi.UbiquityStoreManagerExample</string>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.lyndir.lhunath.UbiquityStoreManagerExample</string>
+		<string>$(AppIdentifierPrefix)com.symfi.UbiquityStoreManagerExample</string>
 	</array>
 </dict>
 </plist>
