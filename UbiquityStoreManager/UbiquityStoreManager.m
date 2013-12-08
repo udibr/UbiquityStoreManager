@@ -710,6 +710,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (cloudEnabled && ![[NSFileManager defaultManager] ubiquityIdentityToken]) {
         [self log:@"Cannot load cloud store: User is not logged into iCloud.  Falling back to local store."];
         cloudEnabled = NO;
+
+        if (!self.cloudWasEnabled)
+            // Cloud was disabled and can't enable it, we don't need to reload: the local store is already active.
+            return;
     }
 
     // Load the requested store.  If the cloud store fails to load, mark it corrupt so we can try to recover it.
@@ -736,8 +740,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     }
 
     // Clear the active persistence store and mark cloud as enabled.
-    if (!self.cloudEnabled)
-        [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = YES forKey:USMCloudEnabledKey];
+    self.cloudWasEnabled = YES;
     [self clearStore];
     self.activeCloudStoreUUID = nil;
 
@@ -827,8 +830,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self assertQueued];
 
     // Clear the active persistence store and mark cloud as disabled.
-    if (self.cloudEnabled)
-        [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = NO forKey:USMCloudEnabledKey];
+    self.cloudWasEnabled = YES;
     [self clearStore];
 
     id context = nil;
@@ -1614,6 +1616,11 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
     NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
     return self.cloudWasEnabled = [local boolForKey:USMCloudEnabledKey];
+}
+
+- (void)setCloudWasEnabled:(BOOL)cloudWasEnabled {
+    if ((self.cloudEnabled != (_cloudWasEnabled = cloudWasEnabled)))
+        [[NSUserDefaults standardUserDefaults] setBool:_cloudWasEnabled forKey:USMCloudEnabledKey];
 }
 
 - (void)setCloudEnabled:(BOOL)enabled {
