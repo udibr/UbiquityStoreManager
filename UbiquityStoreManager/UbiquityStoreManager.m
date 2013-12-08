@@ -1614,8 +1614,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (BOOL)cloudEnabled {
 
-    NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-    return self.cloudWasEnabled = [local boolForKey:USMCloudEnabledKey];
+    return [[NSUserDefaults standardUserDefaults] boolForKey:USMCloudEnabledKey];
 }
 
 - (void)setCloudWasEnabled:(BOOL)cloudWasEnabled {
@@ -1633,7 +1632,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         return;
 
     [self log:@"Switching cloud %@ -> %@", self.cloudWasEnabled? @"enabled": @"disabled", enabled? @"enabled": @"disabled"];
-    [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];
+    self.cloudWasEnabled = enabled;
+
     [self reloadStore];
 }
 
