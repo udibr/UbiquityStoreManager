@@ -689,7 +689,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     self.storeUUIDPresenter = [[USMStoreUUIDPresenter alloc] initWithUSM:self];
     self.corruptedUUIDPresenter = [[USMCorruptedUUIDPresenter alloc] initWithUSM:self];
     self.storeFilePresenter = [[USMLocalStoreFilePresenter alloc] initWithUSM:self];
-    if (self.cloudWasEnabled) {
+    if (self.cloudEnabled) {
         [self.storeUUIDPresenter start];
         [self.corruptedUUIDPresenter start];
     }
@@ -830,7 +830,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self assertQueued];
 
     // Clear the active persistence store and mark cloud as disabled.
-    self.cloudWasEnabled = YES;
+    self.cloudWasEnabled = NO;
     [self clearStore];
 
     id context = nil;
@@ -1617,11 +1617,6 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     return [[NSUserDefaults standardUserDefaults] boolForKey:USMCloudEnabledKey];
 }
 
-- (void)setCloudWasEnabled:(BOOL)cloudWasEnabled {
-    if ((self.cloudEnabled != (_cloudWasEnabled = cloudWasEnabled)))
-        [[NSUserDefaults standardUserDefaults] setBool:_cloudWasEnabled forKey:USMCloudEnabledKey];
-}
-
 - (void)setCloudEnabled:(BOOL)enabled {
 
     if (self.cloudEnabled == enabled)
@@ -1631,10 +1626,16 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (![self ensureQueued:^{ [self setCloudEnabled:enabled]; }])
         return;
 
-    [self log:@"Switching cloud %@ -> %@", self.cloudWasEnabled? @"enabled": @"disabled", enabled? @"enabled": @"disabled"];
-    self.cloudWasEnabled = enabled;
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:USMCloudEnabledKey];
+    [self log:@"Switching cloud %@ -> %@", self.cloudWasEnabled? @"enabled": @"disabled", self.cloudEnabled? @"enabled": @"disabled"];
 
     [self reloadStore];
+}
+
+- (void)setCloudWasEnabled:(BOOL)cloudWasEnabled {
+
+    if ((self.cloudEnabled != (_cloudWasEnabled = cloudWasEnabled)))
+        [[NSUserDefaults standardUserDefaults] setBool:_cloudWasEnabled forKey:USMCloudEnabledKey];
 }
 
 - (BOOL)setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock {
