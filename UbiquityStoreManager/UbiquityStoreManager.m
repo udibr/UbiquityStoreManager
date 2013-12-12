@@ -2082,8 +2082,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 - (void)didImportChanges:(NSNotification *)note {
 
     NSManagedObjectContext *moc = nil;
-    if ([self.delegate respondsToSelector:@selector(managedObjectContextForUbiquityChangesInManager:)])
-        moc = [self.delegate managedObjectContextForUbiquityChangesInManager:self];
+    if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:managedObjectContextForUbiquityChanges:)])
+        moc = [self.delegate ubiquityStoreManager:self managedObjectContextForUbiquityChanges:note];
     if (moc) {
         [self log:@"Importing ubiquity changes into application's MOC.  Changes:\n%@", note.userInfo];
         [moc performBlockAndWait:^{

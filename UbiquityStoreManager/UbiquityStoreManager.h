@@ -113,16 +113,22 @@ typedef enum {
 /** When cloud changes are detected, the manager can merge these changes into your managed object context.
  *
  * If you don't implement this method or return nil, the manager will commit the changes to the store
- * (using NSMergeByPropertyObjectTrumpMergePolicy) but your application may not become aware of them.
+ * (using NSMergeByPropertyObjectTrumpMergePolicy) but your application's context may not become aware of them.
  *
  * If you do implement this method, the changes will be merged into your managed object context
  * and the context will be saved afterwards.
  *
+ * The standard implementation for this method is to just return your application's managed object context.
+ *
  * Regardless of whether this method is implemented or not, a USMStoreDidImportChangesNotification will be
  * posted after the changes are successfully imported into the store.
+ *
+ * @param note The NSPersistentStoreDidImportUbiquitousContentChangesNotification that contains the changes
+ *             that will be imported into the managed object context you return.
  */
 @optional
-- (NSManagedObjectContext *)managedObjectContextForUbiquityChangesInManager:(UbiquityStoreManager *)manager;
+- (NSManagedObjectContext *)ubiquityStoreManager:(UbiquityStoreManager *)manager
+          managedObjectContextForUbiquityChanges:(NSNotification *)note;
 
 /** Triggered when the store manager begins loading a persistence store.
  *
