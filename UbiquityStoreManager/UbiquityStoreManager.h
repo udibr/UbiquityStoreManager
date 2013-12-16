@@ -130,6 +130,11 @@ typedef enum {
 - (NSManagedObjectContext *)ubiquityStoreManager:(UbiquityStoreManager *)manager
           managedObjectContextForUbiquityChanges:(NSNotification *)note;
 
+/** Use -ubiquityStoreManager:managedObjectContextForUbiquityChanges: instead,
+ *  this method is no longer called and will be removed. */
+- (NSManagedObjectContext *)managedObjectContextForUbiquityChangesInManager:(UbiquityStoreManager *)manager
+__attribute__((deprecated));
+
 /** Triggered when the store manager begins loading a persistence store.
  *
  * After this and before -ubiquityStoreManager:didLoadStoreForCoordinator:isCloud:, the application should not be using the persistence
