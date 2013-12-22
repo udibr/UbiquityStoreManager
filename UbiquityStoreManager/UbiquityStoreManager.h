@@ -366,16 +366,24 @@ typedef enum {
  */
 @property(nonatomic) BOOL cloudEnabled;
 
+@property(nonatomic, copy) NSString *storeConfiguration;
+
+/** Start managing an optionally ubiquitous store coordinator.  Assumes nil for all the parameters in the full -init that aren't present here.
+ *  @param delegate The application controller that will be handling the application's persistence responsibilities.
+ */
+- (id)initWithDelegate:(id<UbiquityStoreManagerDelegate>)delegate;
+
 /** Start managing an optionally ubiquitous store coordinator.
  *  @param contentName The name of the local and cloud stores that this manager will create.  If nil, "UbiquityStore" will be used.
  *  @param model The managed object model the store should use.  If nil, all the main bundle's models will be merged.
  *  @param localStoreURL The location where the non-ubiquitous (local) store should be kept. If nil, the local store will be put in the application support directory.
  *  @param containerIdentifier The identifier of the ubiquity container to use for the ubiquitous store. If nil, the entitlement's primary container identifier will be used.
- *  @param additionalStoreOptions Additional persistence options that the stores should be initialized with.
+ *  @param storeConfiguration The persistence model's configuration to load the store with.  If nil, the default configuration is used.
+ *  @param storeOptions Additional persistence options that the stores should be initialized with.  If nil or empty, no options will be added to those necessary to load the store.
  *  @param delegate The application controller that will be handling the application's persistence responsibilities.
  */
 - (id)initStoreNamed:(NSString *)contentName withManagedObjectModel:(NSManagedObjectModel *)model localStoreURL:(NSURL *)localStoreURL
- containerIdentifier:(NSString *)containerIdentifier additionalStoreOptions:(NSDictionary *)additionalStoreOptions
+ containerIdentifier:(NSString *)containerIdentifier storeConfiguration:storeConfiguration storeOptions:(NSDictionary *)storeOptions
             delegate:(id<UbiquityStoreManagerDelegate>)delegate;
 
 #pragma mark - Maintenance
