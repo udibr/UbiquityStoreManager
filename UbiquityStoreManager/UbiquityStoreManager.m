@@ -132,7 +132,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 @property(nonatomic, copy) NSString *contentName;
 @property(nonatomic, strong) NSManagedObjectModel *model;
 @property(nonatomic, copy) NSString *containerIdentifier;
-@property(nonatomic, copy) NSDictionary *additionalStoreOptions;
+@property(nonatomic, copy) NSDictionary *storeOptions;
 @property(nonatomic, readonly) NSString *storeUUID;
 @property(nonatomic, strong) NSString *tentativeStoreUUID;
 @property(nonatomic, strong) NSOperationQueue *persistentStorageQueue;
@@ -169,8 +169,14 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         NSLog( @"UbiquityStoreManager: Warning: Failed to swizzle, won't be able to detect desync issues.  Cause: %@", error );
 }
 
+- (id)initWithDelegate:(id<UbiquityStoreManagerDelegate>)delegate {
+
+    return [self initStoreNamed:nil withManagedObjectModel:nil localStoreURL:nil containerIdentifier:nil
+             storeConfiguration:nil storeOptions:nil delegate:delegate];
+}
+
 - (id)initStoreNamed:(NSString *)contentName withManagedObjectModel:(NSManagedObjectModel *)model localStoreURL:(NSURL *)localStoreURL
- containerIdentifier:(NSString *)containerIdentifier additionalStoreOptions:(NSDictionary *)additionalStoreOptions
+ containerIdentifier:(NSString *)containerIdentifier storeConfiguration:storeConfiguration storeOptions:(NSDictionary *)storeOptions
             delegate:(id<UbiquityStoreManagerDelegate>)delegate {
 
     if (!(self = [super init]))
@@ -186,7 +192,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                 URLByAppendingPathExtension:@"sqlite"];
     _localStoreURL = localStoreURL;
     _containerIdentifier = containerIdentifier;
-    _additionalStoreOptions = additionalStoreOptions == nil? @{ }: additionalStoreOptions;
+    _storeConfiguration = storeConfiguration;
+    _storeOptions = storeOptions == nil? @{ }: storeOptions;
 
     // Private vars.
     _currentIdentityToken = [[NSFileManager defaultManager] respondsToSelector:@selector(ubiquityIdentityToken)]?
@@ -947,7 +954,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             NSMigratePersistentStoresAutomaticallyOption : @YES,
             NSInferMappingModelAutomaticallyOption       : @YES
     } mutableCopy];
-    [localStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
+    [localStoreOptions addEntriesFromDictionary:self.storeOptions];
 
     return localStoreOptions;
 }
@@ -982,7 +989,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         }
     }
 
-    [cloudStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
+    [cloudStoreOptions addEntriesFromDictionary:self.storeOptions];
     return cloudStoreOptions;
 }
 
@@ -1000,7 +1007,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         } mutableCopy];
         if (&NSPersistentStoreRemoveUbiquitousMetadataOption)
             migrationStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
-        [migrationStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
+        [migrationStoreOptions addEntriesFromDictionary:self.storeOptions];
     }
     else if ([[migrationStoreURL absoluteString] rangeOfString:USMCloudStoreDirectory].location != NSNotFound)
             // Migration store is a regular cloud store.
@@ -1042,7 +1049,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
         NSAssert([self.persistentStoreCoordinator.persistentStores count] == 0, @"PSC should have no stores before trying to load one.");
         [self log:@"Loading store: %@", [targetStoreURL lastPathComponent]];
-        if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
+        if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:self.storeConfiguration
                                                                      URL:targetStoreURL options:targetStoreOptions
                                                                    error:&error])
             [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
