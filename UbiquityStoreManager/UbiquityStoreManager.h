@@ -394,7 +394,7 @@ __attribute__((deprecated));
  *  @param delegate The application controller that will be handling the application's persistence responsibilities.
  */
 - (id)initStoreNamed:(NSString *)contentName withManagedObjectModel:(NSManagedObjectModel *)model localStoreURL:(NSURL *)localStoreURL
- containerIdentifier:(NSString *)containerIdentifier storeConfiguration:storeConfiguration storeOptions:(NSDictionary *)storeOptions
+ containerIdentifier:(NSString *)containerIdentifier storeConfiguration:(NSString *)storeConfiguration storeOptions:(NSDictionary *)storeOptions
             delegate:(id<UbiquityStoreManagerDelegate>)delegate;
 
 #pragma mark - Maintenance
