@@ -132,7 +132,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 @property(nonatomic, copy) NSString *contentName;
 @property(nonatomic, strong) NSManagedObjectModel *model;
 @property(nonatomic, copy) NSString *containerIdentifier;
-@property(nonatomic, copy) NSDictionary *additionalStoreOptions;
+@property(nonatomic, copy) NSDictionary *storeOptions;
 @property(nonatomic, readonly) NSString *storeUUID;
 @property(nonatomic, strong) NSString *tentativeStoreUUID;
 @property(nonatomic, strong) NSOperationQueue *persistentStorageQueue;
@@ -169,8 +169,14 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         NSLog( @"UbiquityStoreManager: Warning: Failed to swizzle, won't be able to detect desync issues.  Cause: %@", error );
 }
 
+- (id)initWithDelegate:(id<UbiquityStoreManagerDelegate>)delegate {
+
+    return [self initStoreNamed:nil withManagedObjectModel:nil localStoreURL:nil containerIdentifier:nil
+             storeConfiguration:nil storeOptions:nil delegate:delegate];
+}
+
 - (id)initStoreNamed:(NSString *)contentName withManagedObjectModel:(NSManagedObjectModel *)model localStoreURL:(NSURL *)localStoreURL
- containerIdentifier:(NSString *)containerIdentifier additionalStoreOptions:(NSDictionary *)additionalStoreOptions
+ containerIdentifier:(NSString *)containerIdentifier storeConfiguration:(NSString *)storeConfiguration storeOptions:(NSDictionary *)storeOptions
             delegate:(id<UbiquityStoreManagerDelegate>)delegate {
 
     if (!(self = [super init]))
@@ -186,7 +192,8 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
                 URLByAppendingPathExtension:@"sqlite"];
     _localStoreURL = localStoreURL;
     _containerIdentifier = containerIdentifier;
-    _additionalStoreOptions = additionalStoreOptions == nil? @{ }: additionalStoreOptions;
+    _storeConfiguration = storeConfiguration;
+    _storeOptions = storeOptions == nil? @{ }: storeOptions;
 
     // Private vars.
     _currentIdentityToken = [[NSFileManager defaultManager] respondsToSelector:@selector(ubiquityIdentityToken)]?
@@ -689,7 +696,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     self.storeUUIDPresenter = [[USMStoreUUIDPresenter alloc] initWithUSM:self];
     self.corruptedUUIDPresenter = [[USMCorruptedUUIDPresenter alloc] initWithUSM:self];
     self.storeFilePresenter = [[USMLocalStoreFilePresenter alloc] initWithUSM:self];
-    if (self.cloudWasEnabled) {
+    if (self.cloudEnabled) {
         [self.storeUUIDPresenter start];
         [self.corruptedUUIDPresenter start];
     }
@@ -710,6 +717,10 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (cloudEnabled && ![[NSFileManager defaultManager] ubiquityIdentityToken]) {
         [self log:@"Cannot load cloud store: User is not logged into iCloud.  Falling back to local store."];
         cloudEnabled = NO;
+
+        if (!self.cloudWasEnabled)
+            // Cloud was disabled and can't enable it, we don't need to reload: the local store is already active.
+            return;
     }
 
     // Load the requested store.  If the cloud store fails to load, mark it corrupt so we can try to recover it.
@@ -736,8 +747,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     }
 
     // Clear the active persistence store and mark cloud as enabled.
-    if (!self.cloudEnabled)
-        [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = YES forKey:USMCloudEnabledKey];
+    self.cloudWasEnabled = YES;
     [self clearStore];
     self.activeCloudStoreUUID = nil;
 
@@ -827,8 +837,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     [self assertQueued];
 
     // Clear the active persistence store and mark cloud as disabled.
-    if (self.cloudEnabled)
-        [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = NO forKey:USMCloudEnabledKey];
+    self.cloudWasEnabled = NO;
     [self clearStore];
 
     id context = nil;
@@ -945,7 +954,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
             NSMigratePersistentStoresAutomaticallyOption : @YES,
             NSInferMappingModelAutomaticallyOption       : @YES
     } mutableCopy];
-    [localStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
+    [localStoreOptions addEntriesFromDictionary:self.storeOptions];
 
     return localStoreOptions;
 }
@@ -980,7 +989,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         }
     }
 
-    [cloudStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
+    [cloudStoreOptions addEntriesFromDictionary:self.storeOptions];
     return cloudStoreOptions;
 }
 
@@ -998,7 +1007,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
         } mutableCopy];
         if (&NSPersistentStoreRemoveUbiquitousMetadataOption)
             migrationStoreOptions[NSPersistentStoreRemoveUbiquitousMetadataOption] = @YES;
-        [migrationStoreOptions addEntriesFromDictionary:self.additionalStoreOptions];
+        [migrationStoreOptions addEntriesFromDictionary:self.storeOptions];
     }
     else if ([[migrationStoreURL absoluteString] rangeOfString:USMCloudStoreDirectory].location != NSNotFound)
             // Migration store is a regular cloud store.
@@ -1040,7 +1049,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
         NSAssert([self.persistentStoreCoordinator.persistentStores count] == 0, @"PSC should have no stores before trying to load one.");
         [self log:@"Loading store: %@", [targetStoreURL lastPathComponent]];
-        if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil
+        if (![self.persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:self.storeConfiguration
                                                                      URL:targetStoreURL options:targetStoreOptions
                                                                    error:&error])
             [self error:error cause:IfOut(cause, UbiquityStoreErrorCauseOpenActiveStore)
@@ -1612,8 +1621,7 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 
 - (BOOL)cloudEnabled {
 
-    NSUserDefaults *local = [NSUserDefaults standardUserDefaults];
-    return self.cloudWasEnabled = [local boolForKey:USMCloudEnabledKey];
+    return [[NSUserDefaults standardUserDefaults] boolForKey:USMCloudEnabledKey];
 }
 
 - (void)setCloudEnabled:(BOOL)enabled {
@@ -1625,9 +1633,16 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
     if (![self ensureQueued:^{ [self setCloudEnabled:enabled]; }])
         return;
 
-    [self log:@"Switching cloud %@ -> %@", self.cloudWasEnabled? @"enabled": @"disabled", enabled? @"enabled": @"disabled"];
-    [[NSUserDefaults standardUserDefaults] setBool:self.cloudWasEnabled = enabled forKey:USMCloudEnabledKey];
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:USMCloudEnabledKey];
+    [self log:@"Switching cloud %@ -> %@", self.cloudWasEnabled? @"enabled": @"disabled", self.cloudEnabled? @"enabled": @"disabled"];
+
     [self reloadStore];
+}
+
+- (void)setCloudWasEnabled:(BOOL)cloudWasEnabled {
+
+    if ((self.cloudEnabled != (_cloudWasEnabled = cloudWasEnabled)))
+        [[NSUserDefaults standardUserDefaults] setBool:_cloudWasEnabled forKey:USMCloudEnabledKey];
 }
 
 - (BOOL)setCloudEnabledAndOverwriteCloudWithLocalIfConfirmed:(void (^)(void (^setConfirmationAnswer)(BOOL answer)))confirmationBlock {
@@ -2074,8 +2089,9 @@ extern NSString *NSStringFromUSMCause(UbiquityStoreErrorCause cause) {
 - (void)didImportChanges:(NSNotification *)note {
 
     NSManagedObjectContext *moc = nil;
-    if ([self.delegate respondsToSelector:@selector(managedObjectContextForUbiquityChangesInManager:)])
-        moc = [self.delegate managedObjectContextForUbiquityChangesInManager:self];
+    if ([self.delegate respondsToSelector:@selector(ubiquityStoreManager:managedObjectContextForUbiquityChanges:)])
+        moc = [self.delegate ubiquityStoreManager:self managedObjectContextForUbiquityChanges:note];
+
     if (moc) {
         [self log:@"Importing ubiquity changes into application's MOC.  Changes:\n%@", note.userInfo];
         [moc performBlockAndWait:^{
